@@ -1,0 +1,16 @@
+node_modules/
+dist/
+data/
+*.log
+.env
+.env.local
+
+# Temp scripts and debugging artifacts
+*.tgz
+*.diff
+test*.mjs
+verify*.mjs
+migrate*.ts
+migrate*.log
+prisma_push.log
+local-scripts/
