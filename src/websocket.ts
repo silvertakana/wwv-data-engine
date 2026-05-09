@@ -6,6 +6,36 @@ import { getRegisteredPluginIds } from './scheduler';
 const connections = new Set<WebSocket>();
 const subscriptions = new Map<WebSocket, Set<string>>();
 
+/**
+ * Engine seeder names → list of UI plugin ids that consume that data.
+ * Used by `broadcastPluginData` to deliver under any alias a subscriber
+ * might be using.
+ *
+ * Without this, a UI plugin whose `id` differs from the seeder name
+ * silently never receives data — the subscribe message and the broadcast
+ * message just don't match strings. Concrete examples observed:
+ *
+ *   `wwv-plugin-cyber-attacks`  has id "cyber-attacks", seeder is "cyber_attacks"
+ *   `wwv-plugin-wildfire`       has id "wildfire",      seeder is "wildfires"
+ *   `wwv-plugin-conflict-zones` has id "conflict-zones", seeder is "conflictEvents"
+ *   `wwv-plugin-gps-jamming`    has id "gps-jamming",   seeder is "gps_jamming"
+ *
+ * Each case looks like a "seeder isn't broadcasting" or "plugin is broken"
+ * problem until you trace it; the actual bug is just that snake_case /
+ * camelCase / kebab-case conventions diverged between layers. Maintainers
+ * adding a new seeder whose UI plugin uses a different casing should add
+ * an entry here.
+ */
+const SEEDER_ALIASES: Record<string, string[]> = {
+    cyber_attacks: ['cyber-attacks'],
+    gps_jamming: ['gps-jamming'],
+    civil_unrest: ['civil-unrest'],
+    civilUnrest: ['civil-unrest'],
+    surveillance_satellites: ['surveillance-satellites'],
+    conflictEvents: ['conflict-events', 'conflict-zones'],
+    wildfires: ['wildfire'],
+};
+
 export function handleConnection(connection: WebSocket, request: any) {
   // Option A (Secure Defaults): In a highly public plugin ecosystem, 
   // checking the token is optional/opt-in via env vars.
@@ -47,15 +77,20 @@ export function handleConnection(connection: WebSocket, request: any) {
       const data = JSON.parse(message);
       if (data.action === 'subscribe' && data.pluginId) {
         subscriptions.get(connection)?.add(data.pluginId);
-        
-        // Push the most recent cached snapshot to the client immediately upon subscribing
-        // This eliminates the "half a minute wait" for cron-driven seeders to flush
-        const latestSnapshot = await getLiveSnapshot(data.pluginId);
+
+        // Push the most recent cached snapshot to the client immediately
+        // upon subscribing. Look up the snapshot under the seeder's own
+        // name even if the subscriber asked under a UI-plugin alias.
+        const seederName =
+          Object.entries(SEEDER_ALIASES).find(([, aliases]) =>
+            aliases.includes(data.pluginId),
+          )?.[0] ?? data.pluginId;
+        const latestSnapshot = await getLiveSnapshot(seederName);
         if (latestSnapshot && connections.has(connection)) {
           connection.send(JSON.stringify({
             type: 'data',
             pluginId: data.pluginId,
-            payload: latestSnapshot
+            payload: latestSnapshot,
           }));
         }
       }
@@ -75,10 +110,21 @@ export function handleConnection(connection: WebSocket, request: any) {
 }
 
 export function broadcastPluginData(pluginId: string, payload: any) {
-  const message = JSON.stringify({ type: 'data', pluginId, payload });
+  // Fan out under every id a subscriber could be using: the seeder's
+  // canonical name plus any UI-plugin aliases registered above.
+  const ids = [pluginId, ...(SEEDER_ALIASES[pluginId] ?? [])];
+
   for (const connection of connections) {
-    if (subscriptions.get(connection)?.has(pluginId)) {
-      connection.send(message);
+    const subs = subscriptions.get(connection);
+    if (!subs) continue;
+    for (const id of ids) {
+      if (subs.has(id)) {
+        // Send the message under the id the *subscriber* asked for,
+        // so plugin-side `mapWebsocketPayload` sees a `pluginId` that
+        // matches the plugin's own configured id.
+        connection.send(JSON.stringify({ type: 'data', pluginId: id, payload }));
+        break; // one subscriber ≠ multiple deliveries of the same payload
+      }
     }
   }
 }
