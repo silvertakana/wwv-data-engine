@@ -5,11 +5,9 @@ WORKDIR /app
 # Enable corepack for pnpm
 RUN corepack enable
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
-
-# Use hoisted linker to prevent symlink issues when copying node_modules between docker stages
-RUN pnpm config set node-linker hoisted
+# Copy package files (pnpm-workspace.yaml carries `nodeLinker: hoisted` so node_modules
+# can be copied between docker stages without symlink breakage).
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Install dependencies
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
@@ -32,7 +30,7 @@ WORKDIR /app
 RUN corepack enable
 
 # Copy package files
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Copy built artifacts and fully resolved production node_modules from builder
 # This avoids native recompilation issues (better-sqlite3) in the slim runner
