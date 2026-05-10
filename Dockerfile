@@ -14,14 +14,9 @@ RUN pnpm config set node-linker hoisted
 # Install dependencies
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
 
-# Force native prebuilt binary resolution. pnpm cache mounts often discard postinstall .node artifacts.
-RUN pnpm rebuild better-sqlite3
-
 # Copy source and build
 COPY . .
 RUN pnpm run build
-
-# Development dependencies are retained because pnpm prune --prod aggressively rebuilds the hoisted structure, deleting prebuilt C++ binaries for better-sqlite3 and Rust engines for Prisma.
 
 # Production Stage
 FROM node:22-slim
@@ -34,19 +29,19 @@ RUN corepack enable
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 
-# Copy built artifacts and fully resolved production node_modules from builder
-# This avoids native recompilation issues (better-sqlite3) in the slim runner
-COPY --from=builder /app/node_modules ./node_modules
+# Install production dependencies only
+RUN pnpm install --frozen-lockfile --prod
+
+# Copy built artifacts
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/seedData ./seedData
-COPY --from=builder /app/prisma ./prisma
 
-# Create directory for SQLite DB
-RUN mkdir -p /app/data
+# Create directory for Seeders
+RUN mkdir -p /app/seeders
 
+ENV SEEDERS_DIR=/app/seeders
 ENV NODE_ENV=production
+ENV PORT=5000
 
-
-EXPOSE 5001
+EXPOSE 5000
 
 CMD ["node", "dist/server.js"]

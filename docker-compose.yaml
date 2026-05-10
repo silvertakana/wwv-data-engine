@@ -2,15 +2,15 @@ services:
   wwv-data-engine:
     build: .
     ports:
-      - "5001:5001"
+      - "5000:5000"
     environment:
       - REDIS_URL=redis://wwv-redis-cache:6379
-      - PORT=5001
+      - PORT=5000
     depends_on:
       wwv-redis-cache:
         condition: service_healthy
     volumes:
-      - engine-data:/app/data
+      - ./seeders:/app/seeders:ro
     restart: unless-stopped
 
   wwv-redis-cache:
@@ -27,5 +27,4 @@ services:
       - redis-data:/data
 
 volumes:
-  engine-data:
   redis-data:

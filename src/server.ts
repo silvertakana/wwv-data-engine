@@ -12,9 +12,10 @@ if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
 }
 
 import Fastify from 'fastify';
-import { prisma } from './prisma';
 import { startScheduler } from './scheduler';
 import { seederStatus } from './scheduler';
+import { discoverSeeders } from './seeder-loader';
+import { registerSeeders } from './scheduler';
 
 // Boot Fastify
 export const fastify = Fastify({
@@ -62,7 +63,7 @@ fastify.register(async function (fastify) {
   });
 });
 
-const PORT = parseInt(process.env.PORT || '5001', 10);
+const PORT = parseInt(process.env.PORT || '5000', 10);
 
 fastify.get('/health', async (request, reply) => {
   return {
@@ -75,10 +76,9 @@ fastify.get('/health', async (request, reply) => {
 
 import { getRegisteredPluginIds } from './scheduler';
 import { readFileSync } from 'fs';
-import { join } from 'path';
 
 const enginePkg = JSON.parse(
-  readFileSync(join(__dirname, '..', 'package.json'), 'utf8')
+  readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
 );
 
 fastify.get('/manifest', async () => {
@@ -93,28 +93,15 @@ fastify.get('/manifest', async () => {
 
 async function start() {
   try {
-    // 1. Initialize Prisma Database (Supabase)
-    try {
-      await prisma.$connect();
-    } catch (dbErr) {
-      console.error('[Server] Prisma could not connect. Supabase historical data sync disabled.', dbErr instanceof Error ? dbErr.message : String(dbErr));
-    }
-
-    // 1.5. Initialize Local SQLite (Fallback/Secondary History)
-    const { initDB } = await import('./db.js');
-    initDB();
-
-    // 2. Register Routes
-    await import('./routes/index.js');
+    // 1. Discover dynamic seeders from configured directory
+    const seeders = await discoverSeeders();
+    registerSeeders(seeders);
 
     // 3. Start the Fastify API Server
     await fastify.listen({ port: PORT, host: '0.0.0.0' });
     console.log(`[Server] WWV Data Engine listening on port ${PORT}`);
 
-    // 4. Import seeder registry (this registers them)
-    await import('./seeders/index.js');
-
-    // 5. Start the Cron Scheduler
+    // 4. Start the Cron Scheduler
     startScheduler();
 
   } catch (err) {
@@ -127,7 +114,6 @@ async function start() {
 async function gracefulShutdown(signal: string) {
   console.log(`\n[Server] ${signal} received. Shutting down...`);
   await fastify.close();
-  await prisma.$disconnect();
   process.exit(0);
 }
 

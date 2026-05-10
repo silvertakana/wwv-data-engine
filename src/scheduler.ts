@@ -1,40 +1,32 @@
-import cron from 'node-cron';
-import { pruneHistoryTables } from './db';
-
-// Define the interface for a seeder definition
-export interface SeederDefinition {
-  name: string;
-  cron?: string;        // Optional: Cron expression if it runs on a schedule
-  fn?: () => Promise<void>; // Optional: Function to run on the cron schedule
-  init?: () => void;    // Optional: Initialization function (e.g., for websockets)
-}
+import { setLiveSnapshot } from './redis';
+import type { SeederModule } from './seeder-loader';
 
 // Registry to hold all registered seeders
-let registeredSeeders: SeederDefinition[] = [];
+let registeredSeeders: SeederModule[] = [];
 
 /**
  * Returns the list of registered plugin/seeder IDs.
  * Used by the /manifest endpoint and WebSocket welcome message.
  */
 export function getRegisteredPluginIds(): string[] {
-  return registeredSeeders.map(s => s.name);
+  return registeredSeeders.map(s => s.id);
 }
 
-// Registry to track the last run time of each cron seeder
+// Registry to track the last run time of each seeder
 export const seederStatus: Record<string, number | null> = {};
 
 /**
- * Register a seeder to be scheduled when the engine boots.
+ * Register a list of discovered seeders to be scheduled.
  */
-export function registerSeeder(seeder: SeederDefinition) {
-  registeredSeeders.push(seeder);
-  if (seeder.cron) {
-    seederStatus[seeder.name] = null;
+export function registerSeeders(seeders: SeederModule[]) {
+  registeredSeeders = seeders;
+  for (const seeder of seeders) {
+    seederStatus[seeder.id] = null;
   }
 }
 
 /**
- * Start the scheduler. Initializes websocket listeners and registers cron jobs.
+ * Start the scheduler. Initializes websocket listeners and registers interval jobs.
  */
 export function startScheduler() {
   console.log('[Scheduler] Starting data engine scheduler...');
@@ -42,37 +34,44 @@ export function startScheduler() {
   for (const seeder of registeredSeeders) {
     // 1. Run init handlers (like websocket listeners)
     if (seeder.init) {
-      console.log(`[Scheduler] Initializing persistent seeder: ${seeder.name}`);
-      seeder.init();
+      console.log(`[Scheduler] Initializing persistent seeder: ${seeder.id}`);
+      seeder.init({ redis: require('./redis').redis });
     }
     
-    // 2. Schedule cron jobs
-    if (seeder.cron && seeder.fn) {
-      console.log(`[Scheduler] Scheduling cron seeder: ${seeder.name} (${seeder.cron})`);
+    // 2. Schedule interval jobs
+    if (seeder.interval && seeder.fetch) {
+      console.log(`[Scheduler] Scheduling interval seeder: ${seeder.id} (${seeder.interval}ms)`);
       
-      cron.schedule(seeder.cron, async () => {
+      const runSeeder = async () => {
         try {
-          console.log(`[Scheduler] Running seeder: ${seeder.name} ...`);
-          await seeder.fn!();
-          seederStatus[seeder.name] = Date.now();
+          console.log(`[Scheduler] Running seeder: ${seeder.id} ...`);
+          const data = await seeder.fetch!({ redis: require('./redis').redis });
+          
+          if (data) {
+            // Save payload to Redis & broadcast to WebSocket
+            // TTL is usually 2-3x the interval
+            const ttlSeconds = Math.max(300, Math.floor((seeder.interval! * 3) / 1000));
+            
+            await setLiveSnapshot(seeder.id, {
+              source: seeder.id,
+              fetchedAt: new Date().toISOString(),
+              items: data,
+              totalCount: Array.isArray(data) ? data.length : 0
+            }, ttlSeconds);
+          }
+          
+          seederStatus[seeder.id] = Date.now();
         } catch (error: any) {
-          console.error(`[Scheduler] Seeder ${seeder.name} failed:`, error.message);
+          console.error(`[Scheduler] Seeder ${seeder.id} failed:`, error.message);
         }
-      });
+      };
       
-      // Kick off the first run immediately for cron jobs
-      console.log(`[Scheduler] Kickstarting initial run for ${seeder.name}...`);
-      seeder.fn().then(() => {
-        seederStatus[seeder.name] = Date.now();
-      }).catch((err) => {
-        console.error(`[Scheduler] Initial run for ${seeder.name} failed:`, err.message);
-      });
+      // Kick off the first run immediately
+      console.log(`[Scheduler] Kickstarting initial run for ${seeder.id}...`);
+      runSeeder();
+      
+      // Schedule interval
+      setInterval(runSeeder, seeder.interval);
     }
   }
-
-  // Data retention: prune old history rows every hour
-  cron.schedule('0 * * * *', () => {
-    console.log('[Scheduler] Running data retention pruning...');
-    pruneHistoryTables();
-  });
 }
