@@ -8,11 +8,10 @@ RUN corepack enable
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 
-# Use hoisted linker to prevent symlink issues when copying node_modules between docker stages
-RUN pnpm config set node-linker hoisted
 
 # Install dependencies
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm config set ignore-scripts false
+RUN pnpm install --frozen-lockfile
 
 # Copy source and build
 COPY . .

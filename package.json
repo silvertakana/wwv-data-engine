@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "description": "WorldWideView Data Engine — Open-Source Generic Runner",
   "license": "MIT",
+  "packageManager": "pnpm@10.33.0",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
