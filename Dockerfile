@@ -44,8 +44,7 @@ COPY package.json pnpm-lock.yaml ./
 # This avoids native recompilation issues (better-sqlite3) in the slim runner
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/seedData ./seedData
-COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/seeders ./seeders
 
 # Create directory for SQLite DB
 RUN mkdir -p /app/data
