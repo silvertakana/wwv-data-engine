@@ -30,4 +30,8 @@ jobs:
 
       - name: Trigger Coolify Webhook
         run: |
-          curl -sS -X POST "${{ secrets.COOLIFY_WEBHOOK_URL }}"
+          if [ -n "${{ secrets.COOLIFY_WEBHOOK_URL }}" ]; then
+            curl -sS -X POST "${{ secrets.COOLIFY_WEBHOOK_URL }}"
+          else
+            echo "COOLIFY_WEBHOOK_URL secret is not set, skipping webhook trigger."
+          fi
