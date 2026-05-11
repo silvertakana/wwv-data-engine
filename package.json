@@ -6,16 +6,13 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate && tsc",
-    "start": "node dist/server.js",
-    "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push"
+    "build": "tsc",
+    "start": "node dist/server.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/websocket": "^11.2.0",
-    "@prisma/client": "^6.4.1",
     "@sentry/node": "^10.48.0",
     "better-sqlite3": "^12.8.0",
     "cheerio": "^1.2.0",
@@ -25,7 +22,6 @@
     "geoip-lite": "^2.0.1",
     "ioredis": "^5.4.1",
     "node-cron": "^3.0.3",
-    "prisma": "^6.4.1",
     "satellite.js": "^7.0.0",
     "sax": "^1.6.0",
     "undici": "^8.2.0",
@@ -46,9 +42,6 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3",
-      "@prisma/client",
-      "@prisma/engines",
-      "prisma",
       "@sentry-internal/node-cpu-profiler",
       "esbuild"
     ]
