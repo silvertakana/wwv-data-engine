@@ -79,8 +79,8 @@ export async function discoverSeeders(): Promise<SeederModule[]> {
       }
       
       seeders.push({
-        id,
         ...seederConfig,
+        id,
       });
       
       console.log(`[SeederLoader] Discovered seeder: ${id} (${seederConfig.name})`);
