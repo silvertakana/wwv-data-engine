@@ -82,3 +82,6 @@ export function broadcastPluginData(pluginId: string, payload: any) {
     }
   }
 }
+
+// Expose globally for seeders to access without needing to import websocket module
+(globalThis as any).broadcastPluginData = broadcastPluginData;
