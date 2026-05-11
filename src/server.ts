@@ -95,8 +95,8 @@ import { run as downloadSeeders } from './scripts/download-seeders';
 
 async function start() {
   try {
-    if (process.env.NODE_ENV === 'production' && process.env.DOWNLOAD_SEEDERS !== 'false') {
-      console.log('[Server] Production mode detected. Downloading latest seeders...');
+    if (process.env.DOWNLOAD_SEEDERS === 'true') {
+      console.log('[Server] DOWNLOAD_SEEDERS is true. Downloading latest seeders...');
       await downloadSeeders();
     }
 
