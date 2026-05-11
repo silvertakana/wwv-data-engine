@@ -5,7 +5,7 @@ import AdmZip from 'adm-zip';
 const GITHUB_PAT = process.env.GITHUB_PAT;
 const SEEDERS_DIR = process.env.SEEDERS_DIR || path.resolve(process.cwd(), 'seeders');
 const REPOS = [
-  { owner: 'silvertakana', repo: 'wwv-seeders-community', targetDir: 'community' },
+  { owner: 'silvertakana', repo: 'wwv-seeders', targetDir: 'community' },
   { owner: 'silvertakana', repo: 'wwv-seeders-private', targetDir: 'private', private: true }
 ];
 
