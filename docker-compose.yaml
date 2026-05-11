@@ -10,7 +10,7 @@ services:
       wwv-redis-cache:
         condition: service_healthy
     volumes:
-      - ./seeders:/app/seeders:ro
+      - ../worldwideview/local-seeders:/app/seeders:ro
     restart: unless-stopped
 
   wwv-redis-cache:

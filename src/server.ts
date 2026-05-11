@@ -91,8 +91,15 @@ fastify.get('/manifest', async () => {
   };
 });
 
+import { run as downloadSeeders } from './scripts/download-seeders';
+
 async function start() {
   try {
+    if (process.env.NODE_ENV === 'production' && process.env.DOWNLOAD_SEEDERS !== 'false') {
+      console.log('[Server] Production mode detected. Downloading latest seeders...');
+      await downloadSeeders();
+    }
+
     // 1. Discover dynamic seeders from configured directory
     const seeders = await discoverSeeders();
     registerSeeders(seeders);

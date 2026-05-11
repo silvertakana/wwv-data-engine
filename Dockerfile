@@ -22,6 +22,9 @@ FROM node:22-slim
 
 WORKDIR /app
 
+# Install curl and unzip for dynamic seeders fetch
+RUN apt-get update && apt-get install -y curl unzip && rm -rf /var/lib/apt/lists/*
+
 # Enable corepack for pnpm
 RUN corepack enable
 

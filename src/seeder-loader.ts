@@ -13,37 +13,69 @@ export interface SeederModule {
   init?: (ctx: any) => void;
 }
 
+function findSeederEntryPaths(baseDir: string, depth = 0): { id: string, entryPath: string }[] {
+  // Prevent infinite recursion, max depth 3 should cover /community/packages/<seeder>
+  if (depth > 3) return [];
+  if (!existsSync(baseDir)) return [];
+
+  const results: { id: string, entryPath: string }[] = [];
+  const entries = readdirSync(baseDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    
+    // Skip hidden dirs and node_modules
+    if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+
+    const dirPath = join(baseDir, entry.name);
+    
+    // Check if this dir is a seeder
+    let entryPath = join(dirPath, 'dist', 'index.mjs');
+    if (!existsSync(entryPath)) {
+      entryPath = join(dirPath, 'seeder.mjs');
+    }
+
+    if (existsSync(entryPath)) {
+      results.push({ id: entry.name, entryPath });
+    } else {
+      // If not a seeder, maybe it's a group (like 'community', 'private', 'packages')
+      results.push(...findSeederEntryPaths(dirPath, depth + 1));
+    }
+  }
+
+  return results;
+}
+
 export async function discoverSeeders(): Promise<SeederModule[]> {
   if (!existsSync(SEEDERS_DIR)) {
     console.warn(`[SeederLoader] Seeders directory not found at: ${SEEDERS_DIR}`);
     return [];
   }
 
-  const dirs = readdirSync(SEEDERS_DIR, { withFileTypes: true })
-    .filter(d => d.isDirectory());
-  
+  const seederFiles = findSeederEntryPaths(SEEDERS_DIR);
   const seeders: SeederModule[] = [];
   
-  for (const dir of dirs) {
-    const entryPath = join(SEEDERS_DIR, dir.name, 'seeder.mjs');
-    
-    if (existsSync(entryPath)) {
-      try {
-        // Dynamic import of the seeder module
-        // We use file:// prefix to ensure compatibility on Windows and Linux
-        const mod = await import(`file://${entryPath}`);
-        
-        const seederConfig = mod.default || mod;
-        
-        seeders.push({
-          id: dir.name,
-          ...seederConfig,
-        });
-        
-        console.log(`[SeederLoader] Discovered seeder: ${dir.name} (${seederConfig.name})`);
-      } catch (err) {
-        console.error(`[SeederLoader] Failed to load seeder ${dir.name}:`, err);
+  for (const { id, entryPath } of seederFiles) {
+    try {
+      // Dynamic import of the seeder module
+      // We use file:// prefix to ensure compatibility on Windows and Linux
+      const mod = await import(`file://${entryPath}`);
+      
+      const seederConfig = mod.default || mod;
+      
+      if (!seederConfig || !seederConfig.name) {
+        console.log(`[SeederLoader] Skipping ${id}: not a valid seeder module`);
+        continue;
       }
+      
+      seeders.push({
+        id,
+        ...seederConfig,
+      });
+      
+      console.log(`[SeederLoader] Discovered seeder: ${id} (${seederConfig.name})`);
+    } catch (err) {
+      console.error(`[SeederLoader] Failed to load seeder ${id}:`, err);
     }
   }
   
