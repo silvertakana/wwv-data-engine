@@ -18,6 +18,7 @@ function findSeederEntryPaths(baseDir: string, depth = 0): { id: string, entryPa
   if (depth > 3) return [];
   if (!existsSync(baseDir)) return [];
 
+  console.log(`[SeederLoader] Scanning directory: ${baseDir}`);
   const results: { id: string, entryPath: string }[] = [];
   const entries = readdirSync(baseDir, { withFileTypes: true });
 
@@ -30,12 +31,20 @@ function findSeederEntryPaths(baseDir: string, depth = 0): { id: string, entryPa
     const dirPath = join(baseDir, entry.name);
     
     // Check if this dir is a seeder
-    let entryPath = join(dirPath, 'dist', 'index.mjs');
-    if (!existsSync(entryPath)) {
-      entryPath = join(dirPath, 'seeder.mjs');
+    const entryMjs = join(dirPath, 'dist', 'index.mjs');
+    const entryJs = join(dirPath, 'dist', 'index.js');
+    const seederMjs = join(dirPath, 'seeder.mjs');
+    
+    let entryPath: string | null = null;
+    if (existsSync(entryMjs)) {
+      entryPath = entryMjs;
+    } else if (existsSync(entryJs)) {
+      entryPath = entryJs;
+    } else if (existsSync(seederMjs)) {
+      entryPath = seederMjs;
     }
 
-    if (existsSync(entryPath)) {
+    if (entryPath) {
       results.push({ id: entry.name, entryPath });
     } else {
       // If not a seeder, maybe it's a group (like 'community', 'private', 'packages')
