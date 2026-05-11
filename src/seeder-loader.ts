@@ -10,6 +10,7 @@ export interface SeederModule {
   interval?: number;
   cron?: string;
   fetch?: (ctx: any) => Promise<any>;
+  fn?: (ctx: any) => Promise<any> | void;
   init?: (ctx: any) => void;
 }
 

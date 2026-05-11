@@ -73,5 +73,28 @@ export function startScheduler() {
       // Schedule interval
       setInterval(runSeeder, seeder.interval);
     }
+    
+    // 3. Schedule cron jobs
+    if (seeder.cron && seeder.fn) {
+      console.log(`[Scheduler] Scheduling cron seeder: ${seeder.id} (${seeder.cron})`);
+      const cron = require('node-cron');
+      
+      const runCronSeeder = async () => {
+        try {
+          console.log(`[Scheduler] Running cron seeder: ${seeder.id} ...`);
+          // Many legacy plugins handle their own setLiveSnapshot internally
+          await seeder.fn!({ redis: require('./redis').redis });
+          seederStatus[seeder.id] = Date.now();
+        } catch (error: any) {
+          console.error(`[Scheduler] Cron Seeder ${seeder.id} failed:`, error.message);
+        }
+      };
+
+      // Kick off initial run to hydrate data immediately
+      console.log(`[Scheduler] Kickstarting initial run for ${seeder.id}...`);
+      runCronSeeder();
+
+      cron.schedule(seeder.cron, runCronSeeder);
+    }
   }
 }
