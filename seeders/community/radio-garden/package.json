@@ -1,0 +1,12 @@
+{
+    "name": "wwv-seeder-radio-garden",
+    "version": "0.1.0",
+    "description": "Radio Garden places seeder for wwv-data-engine",
+    "type": "module",
+    "main": "seeder.mjs",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/szski/wwv-data-engine"
+    }
+}
