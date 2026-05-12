@@ -31,7 +31,7 @@ jobs:
       - name: Trigger Coolify API Service Restart
         run: |
           if [ -n "${{ secrets.COOLIFY_API_TOKEN }}" ]; then
-            curl -sS -X POST "https://coolify.worldwideview.dev/api/v1/services/nuyr2d8gsfdhdzhbhk1ift1g/restart" \
+            curl -sS -X POST "https://coolify.worldwideview.dev/api/v1/services/slv47hjfvip5h1xggsc3yenm/restart" \
               -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
               -H "Content-Type: application/json"
           else
