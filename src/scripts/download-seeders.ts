@@ -78,6 +78,21 @@ export async function run() {
         const zip = new AdmZip(zipBuffer);
         zip.extractAllTo(targetPath, true); // true = overwrite
         console.log(`[Downloader] Successfully extracted ${owner}/${repo}`);
+        
+        // Dynamically install dependencies for each extracted plugin
+        const { execSync } = require('child_process');
+        const plugins = fs.readdirSync(targetPath);
+        for (const plugin of plugins) {
+          const pluginPath = path.join(targetPath, plugin);
+          if (fs.statSync(pluginPath).isDirectory() && fs.existsSync(path.join(pluginPath, 'package.json'))) {
+             console.log(`[Downloader] Installing production dependencies for ${plugin}...`);
+             try {
+               execSync('pnpm install --prod', { cwd: pluginPath, stdio: 'inherit' });
+             } catch (installErr) {
+               console.error(`[Downloader] Failed to install dependencies for ${plugin}:`, installErr);
+             }
+          }
+        }
       } catch (err) {
         console.error(`[Downloader] Failed to extract zip for ${owner}/${repo}:`, err);
       }
