@@ -91,6 +91,26 @@ fastify.get('/manifest', async () => {
   };
 });
 
+import { getLiveSnapshot } from './redis';
+
+fastify.get('/api/:id', async (request, reply) => {
+  const { id } = request.params as { id: string };
+  const snapshot = await getLiveSnapshot(id);
+  
+  if (!snapshot) {
+    return reply.status(404).send({ error: 'Snapshot not found or seeder not running' });
+  }
+
+  // Some seeders wrap their output in { items: ... }, others don't.
+  // To ensure the frontend always gets an object with `items` if it expects one,
+  // we can check if `snapshot` already has `items`.
+  if (snapshot && typeof snapshot === 'object' && !('items' in snapshot)) {
+    return { items: snapshot };
+  }
+
+  return snapshot;
+});
+
 import { run as downloadSeeders } from './scripts/download-seeders';
 
 async function start() {
