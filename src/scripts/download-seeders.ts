@@ -67,6 +67,8 @@ export async function run() {
     fs.mkdirSync(SEEDERS_DIR, { recursive: true });
   }
 
+  let extractedSomething = false;
+
   for (const { owner, repo, targetDir, private: isPrivate } of REPOS) {
     const zipBuffer = await downloadRelease(owner, repo, !!isPrivate);
     
@@ -78,24 +80,37 @@ export async function run() {
         const zip = new AdmZip(zipBuffer);
         zip.extractAllTo(targetPath, true); // true = overwrite
         console.log(`[Downloader] Successfully extracted ${owner}/${repo}`);
-        
-        // Dynamically install dependencies for each extracted plugin
-        const { execSync } = require('child_process');
-        const plugins = fs.readdirSync(targetPath);
-        for (const plugin of plugins) {
-          const pluginPath = path.join(targetPath, plugin);
-          if (fs.statSync(pluginPath).isDirectory() && fs.existsSync(path.join(pluginPath, 'package.json'))) {
-             console.log(`[Downloader] Installing production dependencies for ${plugin}...`);
-             try {
-               execSync('pnpm install --prod', { cwd: pluginPath, stdio: 'inherit' });
-             } catch (installErr) {
-               console.error(`[Downloader] Failed to install dependencies for ${plugin}:`, installErr);
-             }
-          }
-        }
+        extractedSomething = true;
       } catch (err) {
         console.error(`[Downloader] Failed to extract zip for ${owner}/${repo}:`, err);
       }
+    }
+  }
+
+  if (extractedSomething) {
+    // 1. Generate root package.json for the workspace
+    const rootPackageJsonPath = path.join(SEEDERS_DIR, 'package.json');
+    fs.writeFileSync(rootPackageJsonPath, JSON.stringify({
+      name: "wwv-seeders-workspace",
+      version: "1.0.0",
+      private: true
+    }, null, 2));
+    console.log(`[Downloader] Generated root package.json at ${rootPackageJsonPath}`);
+
+    // 2. Generate pnpm-workspace.yaml
+    const workspaceYamlPath = path.join(SEEDERS_DIR, 'pnpm-workspace.yaml');
+    const workspaceYamlContent = `packages:\n  - "community/*"\n  - "private/*"\n`;
+    fs.writeFileSync(workspaceYamlPath, workspaceYamlContent);
+    console.log(`[Downloader] Generated pnpm-workspace.yaml at ${workspaceYamlPath}`);
+
+    // 3. Install all dependencies across the workspace
+    const { execSync } = require('child_process');
+    console.log(`[Downloader] Installing production workspace dependencies...`);
+    try {
+      execSync('pnpm install --prod', { cwd: SEEDERS_DIR, stdio: 'inherit' });
+      console.log(`[Downloader] Workspace installation successful.`);
+    } catch (installErr) {
+      console.error(`[Downloader] Failed to install workspace dependencies:`, installErr);
     }
   }
 }

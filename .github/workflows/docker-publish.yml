@@ -28,10 +28,12 @@ jobs:
           push: true
           tags: ghcr.io/silvertakana/wwv-data-engine:latest
 
-      - name: Trigger Coolify Webhook
+      - name: Trigger Coolify API Service Restart
         run: |
-          if [ -n "${{ secrets.COOLIFY_WEBHOOK_URL }}" ]; then
-            curl -sS -X POST "${{ secrets.COOLIFY_WEBHOOK_URL }}"
+          if [ -n "${{ secrets.COOLIFY_API_TOKEN }}" ]; then
+            curl -sS -X POST "https://coolify.worldwideview.dev/api/v1/services/nuyr2d8gsfdhdzhbhk1ift1g/restart" \
+              -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
+              -H "Content-Type: application/json"
           else
-            echo "COOLIFY_WEBHOOK_URL secret is not set, skipping webhook trigger."
+            echo "COOLIFY_API_TOKEN secret is not set, skipping service restart."
           fi
