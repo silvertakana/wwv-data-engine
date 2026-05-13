@@ -1,40 +1,11 @@
 import type { WebSocket } from 'ws';
 import { getLiveSnapshot } from './redis';
 import { getRegisteredPluginIds } from './scheduler';
+import { SEEDER_ALIASES } from './seeder-aliases';
 
 // Track active connections and their subscriptions
 const connections = new Set<WebSocket>();
 const subscriptions = new Map<WebSocket, Set<string>>();
-
-/**
- * Engine seeder names → list of UI plugin ids that consume that data.
- * Used by `broadcastPluginData` to deliver under any alias a subscriber
- * might be using.
- *
- * Without this, a UI plugin whose `id` differs from the seeder name
- * silently never receives data — the subscribe message and the broadcast
- * message just don't match strings. Concrete examples observed:
- *
- *   `wwv-plugin-cyber-attacks`  has id "cyber-attacks", seeder is "cyber_attacks"
- *   `wwv-plugin-wildfire`       has id "wildfire",      seeder is "wildfires"
- *   `wwv-plugin-conflict-zones` has id "conflict-zones", seeder is "conflictEvents"
- *   `wwv-plugin-gps-jamming`    has id "gps-jamming",   seeder is "gps_jamming"
- *
- * Each case looks like a "seeder isn't broadcasting" or "plugin is broken"
- * problem until you trace it; the actual bug is just that snake_case /
- * camelCase / kebab-case conventions diverged between layers. Maintainers
- * adding a new seeder whose UI plugin uses a different casing should add
- * an entry here.
- */
-const SEEDER_ALIASES: Record<string, string[]> = {
-    cyber_attacks: ['cyber-attacks'],
-    gps_jamming: ['gps-jamming'],
-    civil_unrest: ['civil-unrest'],
-    civilUnrest: ['civil-unrest'],
-    surveillance_satellites: ['surveillance-satellites'],
-    conflictEvents: ['conflict-events', 'conflict-zones'],
-    wildfires: ['wildfire'],
-};
 
 export function handleConnection(connection: WebSocket, request: any) {
   // Option A (Secure Defaults): In a highly public plugin ecosystem, 
