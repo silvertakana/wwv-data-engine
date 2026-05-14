@@ -58,7 +58,7 @@ import fastifyJwt from '@fastify/jwt';
 import buildGetJwks from 'get-jwks';
 
 const getJwks = buildGetJwks({
-  cacheMaxAge: 300000 // cache for 5 mins
+  ttl: 300000 // cache for 5 mins
 });
 
 fastify.register(fastifyJwt, {
@@ -71,8 +71,8 @@ fastify.register(fastifyJwt, {
     return await getJwks.getPublicKey({ domain: jwksUrl, alg: header.alg, kid: header.kid });
   },
   verify: {
-    allowedIssuers: ['https://app.worldwideview.dev'],
-    allowedAudiences: ['wwv-data-engine'],
+    allowedIss: ['https://app.worldwideview.dev'],
+    allowedAud: ['wwv-data-engine'],
     algorithms: ['EdDSA'],
     clockTolerance: 60,
   }
