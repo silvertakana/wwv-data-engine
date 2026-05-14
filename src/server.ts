@@ -54,11 +54,53 @@ fastify.register(fastifyCors, {
   methods: ['GET', 'OPTIONS'],
 });
 
+import fastifyJwt from '@fastify/jwt';
+import buildGetJwks from 'get-jwks';
+
+const getJwks = buildGetJwks({
+  cacheMaxAge: 300000 // cache for 5 mins
+});
+
+fastify.register(fastifyJwt, {
+  secret: async (request: any, token: any) => {
+    const { header } = token;
+    if (!header.kid || header.alg !== 'EdDSA') {
+      throw new Error('Invalid token header');
+    }
+    const jwksUrl = process.env.JWKS_URL || 'http://127.0.0.1:3000/api/auth/jwks';
+    return await getJwks.getPublicKey({ domain: jwksUrl, alg: header.alg, kid: header.kid });
+  },
+  verify: {
+    allowedIssuers: ['https://app.worldwideview.dev'],
+    allowedAudiences: ['wwv-data-engine'],
+    algorithms: ['EdDSA'],
+    clockTolerance: 60,
+  }
+});
+
 fastify.register(fastifyWebsocket);
 
 fastify.register(async function (fastify) {
   // @ts-ignore - RouteShorthandOptions augmentation missing for websocket in strict mode
-  fastify.get('/stream', { websocket: true }, (connection: any, req) => {
+  fastify.get('/stream', { 
+    websocket: true,
+    preValidation: (request: any, reply: any, done: any) => {
+      const allowedOrigins = process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+        : ['*'];
+
+      const origin = request.headers.origin || '';
+      if (!allowedOrigins.includes('*') && !allowedOrigins.includes(origin)) {
+        return reply.code(403).send('Forbidden Origin');
+      }
+
+      if (process.env.NODE_ENV === 'production' && request.headers['x-forwarded-proto'] !== 'https') {
+        return reply.code(403).send('HTTPS Required');
+      }
+
+      done();
+    }
+  }, (connection: any, req: any) => {
     handleConnection(connection, req);
   });
 });

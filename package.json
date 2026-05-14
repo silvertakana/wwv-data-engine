@@ -1,6 +1,6 @@
 {
   "name": "@worldwideview/wwv-data-engine",
-  "version": "1.5.3",
+  "version": "1.6.0",
   "packageManager": "pnpm@9.15.4",
   "description": "WWV Data Engine - Dual-tier Shared Backend",
   "main": "dist/server.js",
@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
+    "@fastify/jwt": "^10.0.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/websocket": "^11.2.0",
     "@sentry/node": "^10.48.0",
+    "@worldwideview/wwv-plugin-sdk": "^1.5.0",
     "adm-zip": "^0.5.17",
     "better-sqlite3": "^12.8.0",
     "cheerio": "^1.2.0",
@@ -21,6 +23,7 @@
     "dotenv": "^16.4.5",
     "fastify": "^5.0.0",
     "geoip-lite": "^2.0.1",
+    "get-jwks": "^11.0.3",
     "ioredis": "^5.4.1",
     "node-cron": "^3.0.3",
     "satellite.js": "^7.0.0",
@@ -37,9 +40,11 @@
     "@types/node-cron": "^3.0.11",
     "@types/sax": "^1.2.7",
     "@types/ws": "^8.5.12",
+    "jose": "^6.2.3",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vitest": "^4.1.6"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
