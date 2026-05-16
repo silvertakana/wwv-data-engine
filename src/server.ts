@@ -95,7 +95,7 @@ fastify.get('/health', async (request, reply) => {
   };
 });
 
-import { getRegisteredPluginIds } from './scheduler';
+import { getRegisteredPluginIds, getRegisteredSeederNames } from './scheduler';
 import { readFileSync } from 'fs';
 
 const enginePkg = JSON.parse(
@@ -109,6 +109,13 @@ fastify.get('/manifest', async () => {
     plugins: getRegisteredPluginIds(),
     websocket: '/stream',
     timestamp: Date.now(),
+  };
+});
+
+fastify.get('/api/seeders/active', async () => {
+  return {
+    activeSeeders: getRegisteredSeederNames(),
+    timestamp: Date.now()
   };
 });
 
