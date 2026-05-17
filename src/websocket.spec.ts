@@ -4,6 +4,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import fastifyJwt from '@fastify/jwt';
 import { handleConnection } from './websocket';
 import WebSocket from 'ws';
+// @ts-ignore
 import * as jose from 'jose';
 
 vi.mock('./redis', () => ({

@@ -1,7 +1,17 @@
 import type { WebSocket } from 'ws';
 import { getLiveSnapshot } from './redis';
 import { getRegisteredPluginIds } from './scheduler';
-import type { WebSocketAuthMessage, PluginJwtClaims } from '@worldwideview/wwv-plugin-sdk';
+export type WebSocketAuthMessage = {
+  type: 'auth';
+  v: number;
+  token: string;
+};
+
+export type PluginJwtClaims = {
+  sub: string;
+  aud: string;
+  exp: number;
+};
 
 // Track active connections and their subscriptions
 const connections = new Set<WebSocket>();
