@@ -41,7 +41,7 @@ import fastifyCors from '@fastify/cors';
 import { handleConnection } from './websocket';
 
 fastify.register(fastifyRateLimit, {
-  max: 100,
+  max: 2000,
   timeWindow: '1 minute'
 });
 
