@@ -82,7 +82,7 @@ export function handleConnection(connection: WebSocket, request: any) {
         // REDACT LOGS: We deliberately do not log data.token or decoded
         
         isAuthenticated = true;
-        clearTimeout(authTimeout);
+        if (authTimeout) clearTimeout(authTimeout);
 
         // Enforce Max TTL timeout for socket
         const expMs = decoded.exp * 1000;
