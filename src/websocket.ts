@@ -17,12 +17,29 @@ export type PluginJwtClaims = {
 const connections = new Set<WebSocket>();
 const subscriptions = new Map<WebSocket, Set<string>>();
 
+// Set WWV_SKIP_WS_AUTH=true to disable JWT-first-message auth on /stream.
+// When true, every WebSocket connection is treated as pre-authenticated, no
+// JWT is required, and no expiry timeout is enforced. This is a stopgap until
+// the WWV app's JWKS endpoint + JWT issuance for aud=wwv-data-engine is wired
+// up (see ADR-0001). Only safe while all served data is public-source.
+const SKIP_WS_AUTH = process.env.WWV_SKIP_WS_AUTH === 'true';
+
 export function handleConnection(connection: WebSocket, request: any) {
-  // Give client 3 seconds to send auth message
-  let isAuthenticated = false;
+  let isAuthenticated = SKIP_WS_AUTH;
   let jwtExpTimeout: NodeJS.Timeout | null = null;
-  
-  const authTimeout = setTimeout(() => {
+
+  // Pre-authenticate immediately when auth is bypassed
+  if (SKIP_WS_AUTH) {
+    connections.add(connection);
+    subscriptions.set(connection, new Set());
+    connection.send(JSON.stringify({
+      type: 'welcome',
+      engine: 'wwv-data-engine',
+      plugins: getRegisteredPluginIds(),
+    }));
+  }
+
+  const authTimeout = SKIP_WS_AUTH ? null : setTimeout(() => {
     if (!isAuthenticated) {
       connection.close(4003, 'Auth timeout');
     }
@@ -125,7 +142,7 @@ export function handleConnection(connection: WebSocket, request: any) {
   });
 
   connection.on('close', () => {
-    clearTimeout(authTimeout);
+    if (authTimeout) clearTimeout(authTimeout);
     if (jwtExpTimeout) clearTimeout(jwtExpTimeout);
     clearInterval(heartbeat);
     connections.delete(connection);
