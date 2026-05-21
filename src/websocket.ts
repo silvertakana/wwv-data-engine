@@ -1,16 +1,12 @@
 import type { WebSocket } from 'ws';
 import { getLiveSnapshot } from './redis';
 import { getRegisteredPluginIds } from './scheduler';
+import { verifyEngineToken } from './jwt-auth';
+
 export type WebSocketAuthMessage = {
   type: 'auth';
   v: number;
   token: string;
-};
-
-export type PluginJwtClaims = {
-  sub: string;
-  aud: string;
-  exp: number;
 };
 
 // Track active connections and their subscriptions
@@ -68,20 +64,11 @@ export function handleConnection(connection: WebSocket, request: any) {
           return;
         }
 
-        // Verify JWT using fastify-jwt attached to request.server
-        const decoded = await request.server.jwt.verify(data.token, {
-          allowedIss: 'https://marketplace.worldwideview.dev',
-          algorithms: ['EdDSA'],
-          clockTolerance: 60,
-        }) as PluginJwtClaims;
+        // Verify ticket (signature, iss, aud, exp) via jose — see jwt-auth.ts.
+        // REDACT LOGS: never log data.token or the decoded payload.
+        const decoded = await verifyEngineToken(data.token);
 
-        const expectedAud = process.env.ENGINE_ID || 'wwv-data-engine';
-        if (decoded.aud !== expectedAud && decoded.aud !== 'wwv-data-engines') {
-          throw new Error('Invalid audience');
-        }
-        
-        // REDACT LOGS: We deliberately do not log data.token or decoded
-        
+
         isAuthenticated = true;
         if (authTimeout) clearTimeout(authTimeout);
 

@@ -54,30 +54,8 @@ fastify.register(fastifyCors, {
   methods: ['GET', 'OPTIONS'],
 });
 
-import fastifyJwt from '@fastify/jwt';
-import buildGetJwks from 'get-jwks';
-
-const getJwks = buildGetJwks({
-  ttl: 300000 // cache for 5 mins
-});
-
-fastify.register(fastifyJwt, {
-  secret: async (request: any, token: any) => {
-    const { header } = token;
-    if (!header.kid || header.alg !== 'EdDSA') {
-      throw new Error('Invalid token header');
-    }
-    const jwksUrl = process.env.JWKS_URL;
-    if (!jwksUrl) throw new Error('[jwt] JWKS_URL env var is required');
-    return await getJwks.getPublicKey({ domain: jwksUrl, alg: header.alg, kid: header.kid });
-  },
-  verify: {
-    allowedIss: ['https://marketplace.worldwideview.dev'],
-    allowedAud: ['wwv-data-engine', 'wwv-data-engines'],
-    algorithms: ['EdDSA'],
-    clockTolerance: 60,
-  }
-});
+// JWT ticket verification (ADR-001B) lives in jwt-auth.ts and is exercised by
+// the WebSocket first-message auth in websocket.ts — no Fastify plugin needed.
 
 fastify.register(fastifyWebsocket);
 
