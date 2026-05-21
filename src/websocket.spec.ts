@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import Fastify from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
-import fastifyJwt from '@fastify/jwt';
 import { handleConnection } from './websocket';
 import { checkJwksReachable } from './startup-checks';
 import WebSocket from 'ws';
@@ -19,34 +18,23 @@ vi.mock('./scheduler', () => ({
 describe('WebSocket Origin Validation & Auth Gating', () => {
   let app: any;
   let url: string;
-  let privateKeyPem: string;
-  let publicKeyPem: string;
+  let privateKey: any;
   let kid = 'test-key-1';
+  let originalJwksUrl: string | undefined;
 
   beforeAll(async () => {
     // Generate EdDSA keys for test
-    const { publicKey: pub, privateKey: priv } = await jose.generateKeyPair('EdDSA', { extractable: true });
-    privateKeyPem = await jose.exportPKCS8(priv);
-    publicKeyPem = await jose.exportSPKI(pub);
+    const { publicKey, privateKey: priv } = await jose.generateKeyPair('EdDSA', { extractable: true });
+    privateKey = priv;
+    const publicJwk = { ...(await jose.exportJWK(publicKey)), kid, alg: 'EdDSA' };
 
-    // Start server
+    // Start server — serves the test JWKS and the /stream WS route on one port
     app = Fastify();
     app.register(fastifyWebsocket);
-    
-    app.register(fastifyJwt, {
-      secret: async (request: any, token: any) => {
-        return publicKeyPem;
-      },
-      verify: {
-        allowedIssuers: ['https://marketplace.worldwideview.dev'],
-        allowedAudiences: ['wwv-data-engine', 'wwv-data-engines'],
-        algorithms: ['EdDSA'],
-        clockTolerance: 60,
-      }
-    });
+    app.get('/jwks', async () => ({ keys: [publicJwk] }));
 
     app.register(async function (fastify: any) {
-      fastify.get('/stream', { 
+      fastify.get('/stream', {
         websocket: true,
         preValidation: (request: any, reply: any, done: any) => {
           const allowedOrigins = process.env.ALLOWED_ORIGINS
@@ -68,26 +56,33 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
     await app.listen({ port: 0, host: '127.0.0.1' });
     const address = app.server.address();
     url = `ws://127.0.0.1:${address.port}/stream`;
-    
+
+    // jwt-auth.ts builds its JWKS resolver lazily from JWKS_URL on first verify.
+    originalJwksUrl = process.env.JWKS_URL;
+    process.env.JWKS_URL = `http://127.0.0.1:${address.port}/jwks`;
     process.env.ALLOWED_ORIGINS = 'https://app.worldwideview.dev';
   });
 
   afterAll(async () => {
     await app.close();
+    if (originalJwksUrl === undefined) {
+      delete process.env.JWKS_URL;
+    } else {
+      process.env.JWKS_URL = originalJwksUrl;
+    }
   });
 
   async function createToken(payload: any = {}, options: any = {}) {
-    const privKey = await jose.importPKCS8(privateKeyPem, 'EdDSA');
     const jwt = new jose.SignJWT(payload)
       .setProtectedHeader({ alg: 'EdDSA', kid })
       .setIssuedAt()
       .setIssuer(options.issuer || 'https://marketplace.worldwideview.dev')
       .setAudience(options.audience || 'wwv-data-engine')
       .setExpirationTime(options.exp || '5m');
-      
+
     if (options.nbf) jwt.setNotBefore(options.nbf);
-    
-    return await jwt.sign(privKey);
+
+    return await jwt.sign(privateKey);
   }
 
   it('closes connection with 4003 if no auth message is sent within 3000ms', async () => {
