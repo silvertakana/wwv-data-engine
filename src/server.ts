@@ -67,12 +67,13 @@ fastify.register(fastifyJwt, {
     if (!header.kid || header.alg !== 'EdDSA') {
       throw new Error('Invalid token header');
     }
-    const jwksUrl = process.env.JWKS_URL || 'http://127.0.0.1:3000/api/auth/jwks';
+    const jwksUrl = process.env.JWKS_URL;
+    if (!jwksUrl) throw new Error('[jwt] JWKS_URL env var is required');
     return await getJwks.getPublicKey({ domain: jwksUrl, alg: header.alg, kid: header.kid });
   },
   verify: {
-    allowedIss: ['https://app.worldwideview.dev'],
-    allowedAud: ['wwv-data-engine'],
+    allowedIss: ['https://marketplace.worldwideview.dev'],
+    allowedAud: ['wwv-data-engine', 'wwv-data-engines'],
     algorithms: ['EdDSA'],
     clockTolerance: 60,
   }
@@ -154,12 +155,28 @@ fastify.get('/api/:id', async (request, reply) => {
 });
 
 import { run as downloadSeeders } from './scripts/download-seeders';
+import { checkJwksReachable } from './startup-checks';
 
 async function start() {
   try {
     if (process.env.DOWNLOAD_SEEDERS === 'true') {
       console.log('[Server] DOWNLOAD_SEEDERS is true. Downloading latest seeders...');
       await downloadSeeders();
+    }
+
+    if (process.env.WWV_SKIP_WS_AUTH !== 'true') {
+      const jwksUrl = process.env.JWKS_URL;
+      if (!jwksUrl) {
+        console.error('[Server] JWKS_URL required when auth is enabled');
+        process.exit(1);
+      }
+      try {
+        await checkJwksReachable(jwksUrl);
+        console.log('[Server] JWKS reachable at', jwksUrl);
+      } catch (e) {
+        console.error('[Server] FATAL: JWKS unreachable at startup:', jwksUrl);
+        process.exit(1);
+      }
     }
 
     // 1. Discover dynamic seeders from configured directory
