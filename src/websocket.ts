@@ -70,12 +70,13 @@ export function handleConnection(connection: WebSocket, request: any) {
 
         // Verify JWT using fastify-jwt attached to request.server
         const decoded = await request.server.jwt.verify(data.token, {
-          allowedIss: 'https://app.worldwideview.dev',
+          allowedIss: 'https://marketplace.worldwideview.dev',
           algorithms: ['EdDSA'],
           clockTolerance: 60,
         }) as PluginJwtClaims;
-        
-        if (decoded.aud !== 'wwv-data-engine') {
+
+        const expectedAud = process.env.ENGINE_ID || 'wwv-data-engine';
+        if (decoded.aud !== expectedAud && decoded.aud !== 'wwv-data-engines') {
           throw new Error('Invalid audience');
         }
         

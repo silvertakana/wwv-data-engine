@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyJwt from '@fastify/jwt';
 import { handleConnection } from './websocket';
+import { checkJwksReachable } from './startup-checks';
 import WebSocket from 'ws';
 // @ts-ignore
 import * as jose from 'jose';
@@ -37,8 +38,8 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
         return publicKeyPem;
       },
       verify: {
-        allowedIssuers: ['https://app.worldwideview.dev'],
-        allowedAudiences: ['wwv-data-engine'],
+        allowedIssuers: ['https://marketplace.worldwideview.dev'],
+        allowedAudiences: ['wwv-data-engine', 'wwv-data-engines'],
         algorithms: ['EdDSA'],
         clockTolerance: 60,
       }
@@ -80,7 +81,7 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
     const jwt = new jose.SignJWT(payload)
       .setProtectedHeader({ alg: 'EdDSA', kid })
       .setIssuedAt()
-      .setIssuer(options.issuer || 'https://app.worldwideview.dev')
+      .setIssuer(options.issuer || 'https://marketplace.worldwideview.dev')
       .setAudience(options.audience || 'wwv-data-engine')
       .setExpirationTime(options.exp || '5m');
       
@@ -212,5 +213,59 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
         }
       });
     });
+  });
+
+  it('rejects JWT with old issuer (app.worldwideview.dev) → 4003', async () => {
+    const token = await createToken({ sub: 'tenant-1' }, { issuer: 'https://app.worldwideview.dev' });
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(url, { headers: { Origin: 'https://app.worldwideview.dev' } });
+      ws.on('open', () => {
+        ws.send(JSON.stringify({ type: 'auth', v: 1, token }));
+      });
+      ws.on('close', (code) => {
+        try {
+          expect(code).toBe(4003);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  });
+
+  it('accepts JWT with wwv-data-engines audience and sends welcome', async () => {
+    const token = await createToken({ sub: 'tenant-1' }, { audience: 'wwv-data-engines' });
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(url, { headers: { Origin: 'https://app.worldwideview.dev' } });
+      ws.on('open', () => {
+        ws.send(JSON.stringify({ type: 'auth', v: 1, token }));
+      });
+      ws.on('message', (msg) => {
+        const data = JSON.parse(msg.toString());
+        if (data.type === 'welcome') {
+          ws.close();
+          resolve();
+        }
+      });
+      ws.on('close', (code) => {
+        if (code !== 1000 && code !== 1005) {
+          reject(new Error('Closed unexpectedly: ' + code));
+        }
+      });
+    });
+  });
+});
+
+describe('JWKS cold-start check', () => {
+  it('resolves when JWKS endpoint is reachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    await expect(checkJwksReachable('https://marketplace.worldwideview.dev/api/auth/jwks')).resolves.toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it('throws when JWKS endpoint is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
+    await expect(checkJwksReachable('https://marketplace.worldwideview.dev/api/auth/jwks')).rejects.toThrow('Network error');
+    vi.unstubAllGlobals();
   });
 });
