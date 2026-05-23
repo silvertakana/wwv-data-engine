@@ -58,14 +58,26 @@ async function getKeyResolver(): Promise<JwksResolver> {
 export async function verifyEngineToken(token: string): Promise<EngineTokenClaims> {
   const { jwtVerify } = await loadJose();
   const resolver = await getKeyResolver();
-  const { payload } = await jwtVerify(token, resolver, {
-    issuer: ISSUER,
-    audience: acceptedAudiences(),
-    algorithms: ['EdDSA'],
-    clockTolerance: 60,
-  });
-  if (typeof payload.sub !== 'string' || typeof payload.exp !== 'number') {
-    throw new Error('Token missing required claims (sub, exp)');
+  try {
+    const { payload } = await jwtVerify(token, resolver, {
+      issuer: ISSUER,
+      audience: acceptedAudiences(),
+      algorithms: ['EdDSA'],
+      clockTolerance: 60,
+    });
+    if (typeof payload.sub !== 'string' || typeof payload.exp !== 'number') {
+      throw new Error('Token missing required claims (sub, exp)');
+    }
+    return payload as EngineTokenClaims;
+  } catch (err: any) {
+    // Reset the cached resolver on network failures so the next connection
+    // attempt re-initialises it — allows recovery when JWKS comes back up
+    // without requiring an engine restart.
+    const msg: string = err?.message ?? '';
+    if (msg.includes('fetch') || err?.code === 'ECONNREFUSED' || err?.code === 'ENOTFOUND') {
+      console.error('[jwt] JWKS fetch failed — resetting resolver for retry:', msg);
+      keyResolver = null;
+    }
+    throw err;
   }
-  return payload as EngineTokenClaims;
 }
