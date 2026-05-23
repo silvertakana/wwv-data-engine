@@ -14,3 +14,6 @@ migrate*.ts
 migrate*.log
 prisma_push.log
 local-scripts/
+
+# claude code (personal)
+/.claude/settings.local.json

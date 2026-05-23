@@ -4,9 +4,9 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 import * as Sentry from '@sentry/node';
 
-if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+if (process.env.SENTRY_DSN) {
   Sentry.init({
-    dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    dsn: process.env.SENTRY_DSN,
     tracesSampleRate: 0.1,
   });
 }
@@ -23,7 +23,7 @@ export const fastify = Fastify({
 });
 
 fastify.setErrorHandler(function (error: any, request, reply) {
-  if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+  if (process.env.SENTRY_DSN) {
     Sentry.captureException(error, {
       extra: {
         method: request.method,

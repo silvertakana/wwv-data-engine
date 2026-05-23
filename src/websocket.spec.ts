@@ -249,6 +249,126 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
       });
     });
   });
+
+  it('rejects JWT missing sub claim → 4003', async () => {
+    // Build a JWT that has no sub but is otherwise valid
+    const tokenNoSub = await new jose.SignJWT({})
+      .setProtectedHeader({ alg: 'EdDSA', kid })
+      .setIssuedAt()
+      .setIssuer('https://marketplace.worldwideview.dev')
+      .setAudience('wwv-data-engine')
+      .setExpirationTime('5m')
+      .sign(privateKey);
+
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(url, { headers: { Origin: 'https://app.worldwideview.dev' } });
+      ws.on('open', () => {
+        ws.send(JSON.stringify({ type: 'auth', v: 1, token: tokenNoSub }));
+      });
+      ws.on('close', (code) => {
+        try {
+          expect(code).toBe(4003);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  });
+
+  it('rejects JWT missing exp claim → 4003', async () => {
+    // Build a JWT that has no expiration
+    const tokenNoExp = await new jose.SignJWT({ sub: 'tenant-1' })
+      .setProtectedHeader({ alg: 'EdDSA', kid })
+      .setIssuedAt()
+      .setIssuer('https://marketplace.worldwideview.dev')
+      .setAudience('wwv-data-engine')
+      // deliberately omit .setExpirationTime()
+      .sign(privateKey);
+
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(url, { headers: { Origin: 'https://app.worldwideview.dev' } });
+      ws.on('open', () => {
+        ws.send(JSON.stringify({ type: 'auth', v: 1, token: tokenNoExp }));
+      });
+      ws.on('close', (code) => {
+        try {
+          expect(code).toBe(4003);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  });
+});
+
+describe('Auth race condition', () => {
+  let app: any;
+  let url: string;
+  let privateKey: any;
+  let kid = 'race-key-1';
+
+  beforeAll(async () => {
+    const { publicKey, privateKey: priv } = await jose.generateKeyPair('EdDSA', { extractable: true });
+    privateKey = priv;
+    const publicJwk = { ...(await jose.exportJWK(publicKey)), kid, alg: 'EdDSA' };
+
+    app = Fastify();
+    app.register(fastifyWebsocket);
+    app.get('/jwks', async () => ({ keys: [publicJwk] }));
+
+    app.register(async function (fastify: any) {
+      fastify.get('/stream', { websocket: true }, (connection: any, req: any) => {
+        handleConnection(connection, req);
+      });
+    });
+
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = app.server.address();
+    url = `ws://127.0.0.1:${address.port}/stream`;
+
+    process.env.JWKS_URL = `http://127.0.0.1:${address.port}/jwks`;
+    // Allow any origin for this suite
+    process.env.ALLOWED_ORIGINS = '*';
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('closes with 4003 when a second auth message arrives while the first is in-flight', async () => {
+    const token = await new jose.SignJWT({ sub: 'race-tenant' })
+      .setProtectedHeader({ alg: 'EdDSA', kid })
+      .setIssuedAt()
+      .setIssuer('https://marketplace.worldwideview.dev')
+      .setAudience('wwv-data-engine')
+      .setExpirationTime('5m')
+      .sign(privateKey);
+
+    return new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('Timeout waiting for close')), 6000);
+      const ws = new WebSocket(url);
+
+      ws.on('open', () => {
+        // Send two auth messages synchronously — no await between them.
+        // The second arrives while verifyEngineToken is awaited for the first,
+        // so authPending is true and the server must close with 4003.
+        ws.send(JSON.stringify({ type: 'auth', v: 1, token }));
+        ws.send(JSON.stringify({ type: 'auth', v: 1, token }));
+      });
+
+      ws.on('close', (code) => {
+        clearTimeout(t);
+        try {
+          expect(code).toBe(4003);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  });
 });
 
 describe('JWKS cold-start check', () => {
@@ -261,6 +381,18 @@ describe('JWKS cold-start check', () => {
   it('throws when JWKS endpoint is unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
     await expect(checkJwksReachable('https://marketplace.worldwideview.dev/api/auth/jwks')).rejects.toThrow('Network error');
+    vi.unstubAllGlobals();
+  });
+
+  it('throws when JWKS endpoint returns 404', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    await expect(checkJwksReachable('https://marketplace.worldwideview.dev/api/auth/jwks')).rejects.toThrow('404');
+    vi.unstubAllGlobals();
+  });
+
+  it('throws when JWKS endpoint returns 503', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }));
+    await expect(checkJwksReachable('https://marketplace.worldwideview.dev/api/auth/jwks')).rejects.toThrow('503');
     vi.unstubAllGlobals();
   });
 });
