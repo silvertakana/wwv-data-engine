@@ -29,7 +29,7 @@ cp .env.local.example .env.local   # edit if needed
 pnpm dev
 ```
 
-The engine starts at `http://localhost:5001`:
+The engine starts at `http://localhost:5000`:
 - `GET /health` — Engine status and seeder health
 - `GET /manifest` — List of available seeders
 - `WS /stream` — WebSocket endpoint for real-time data
@@ -59,7 +59,7 @@ Runs the engine + Redis. Data persists in Docker volumes.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `REDIS_URL` | No | `redis://localhost:6379` | Redis connection string |
-| `PORT` | No | `5001` | Server port |
+| `PORT` | No | `5000` | Server port |
 | `OTX_API_KEY` | No | — | AlienVault OTX key for cyber attacks (free tier available) |
 | `DATABASE_URL` | No | — | Supabase/Postgres URL for historical sync (optional) |
 

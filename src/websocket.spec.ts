@@ -371,6 +371,73 @@ describe('Auth race condition', () => {
   });
 });
 
+describe('Auth enforcement — subscribe-first and timeout paths', () => {
+  let app: any;
+  let url: string;
+
+  beforeAll(async () => {
+    app = Fastify();
+    app.register(fastifyWebsocket);
+
+    app.register(async function (fastify: any) {
+      fastify.get('/stream', { websocket: true }, (connection: any, req: any) => {
+        handleConnection(connection, req);
+      });
+    });
+
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = app.server.address();
+    url = `ws://127.0.0.1:${address.port}/stream`;
+    process.env.ALLOWED_ORIGINS = '*';
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('closes with 4003 when client sends subscribe action before authenticating (subscribe-first rejection)', async () => {
+    // Guards against the WsClient bug where auth is skipped and a subscribe
+    // message is sent immediately — engine must reject with close(4003).
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(url);
+      const t = setTimeout(() => reject(new Error('Timeout: expected 4003 close within 500ms')), 500);
+
+      ws.on('open', () => {
+        ws.send(JSON.stringify({ action: 'subscribe', pluginId: 'test' }));
+      });
+
+      ws.on('close', (code) => {
+        clearTimeout(t);
+        try {
+          expect(code).toBe(4003);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  });
+
+  it('closes with 4003 after 3 seconds when client sends no message (auth timeout)', async () => {
+    // Guards the auth timeout path: engine closes with code 4003 after 3000ms
+    // of silence from an unauthenticated client.
+    return new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(url);
+      const t = setTimeout(() => reject(new Error('Timeout: expected 4003 close within 3500ms')), 3500);
+
+      ws.on('close', (code) => {
+        clearTimeout(t);
+        try {
+          expect(code).toBe(4003);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+  });
+});
+
 describe('JWKS cold-start check', () => {
   it('resolves when JWKS endpoint is reachable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
