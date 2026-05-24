@@ -142,6 +142,11 @@ async function start() {
       await downloadSeeders();
     }
 
+    if (process.env.WWV_SKIP_WS_AUTH === 'true' && process.env.NODE_ENV === 'production') {
+      console.error('[Server] FATAL: WWV_SKIP_WS_AUTH=true is forbidden in production. Unset this env var before deploying.');
+      process.exit(1);
+    }
+
     if (process.env.WWV_SKIP_WS_AUTH !== 'true') {
       const jwksUrl = process.env.JWKS_URL;
       if (!jwksUrl) {

@@ -63,7 +63,7 @@ export async function verifyEngineToken(token: string): Promise<EngineTokenClaim
       issuer: ISSUER,
       audience: acceptedAudiences(),
       algorithms: ['EdDSA'],
-      clockTolerance: 60,
+      clockTolerance: 30,
     });
     if (typeof payload.sub !== 'string' || typeof payload.exp !== 'number') {
       throw new Error('Token missing required claims (sub, exp)');
