@@ -2,6 +2,13 @@
 // When STUB_PLUGIN_ID is unset it exports a nameless module so the seeder
 // loader SKIPS it (must never crash the shared :ci engine in seeder-CI).
 // Source of truth: worldwideview/docker/ci/stub-seeder. Keep in sync.
+//
+// Uses the interval+fetch seeder contract: fetch() simply RETURNS the array
+// and the scheduler auto-wraps it into a snapshot and stores it under the
+// seeder id (= directory name). The cron+fn contract would require calling the
+// engine-internal setLiveSnapshot, which is NOT exposed on the seeder ctx
+// (ctx is only { redis }) — calling ctx.setLiveSnapshot throws and the snapshot
+// never lands, so the probe receives nothing.
 
 const pluginId = process.env.STUB_PLUGIN_ID;
 
@@ -16,11 +23,11 @@ function makeEntities() {
 export default pluginId
   ? {
       name: pluginId,
-      cron: "*/10 * * * * *",
-      fn: async (ctx) => {
+      interval: 10000,
+      fetch: async () => {
         const entities = makeEntities();
-        await ctx.setLiveSnapshot(pluginId, entities, 300);
-        console.log(`[stub-seeder] emitted ${entities.length} entities for ${pluginId}`);
+        console.log(`[stub-seeder] emitting ${entities.length} entities for ${pluginId}`);
+        return entities;
       },
     }
   : {};
