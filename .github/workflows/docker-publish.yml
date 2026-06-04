@@ -28,6 +28,14 @@ jobs:
           push: true
           tags: ghcr.io/silvertakana/wwv-data-engine:latest
 
+      - name: Build and push CI image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ci
+          push: true
+          tags: ghcr.io/silvertakana/wwv-data-engine:ci
+
       - name: Trigger Coolify API Service Restart
         run: |
           if [ -n "${{ secrets.COOLIFY_API_TOKEN }}" ]; then

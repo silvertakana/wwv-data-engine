@@ -1,0 +1,1 @@
+{ "name": "stub-seeder", "version": "0.1.0", "type": "module", "main": "dist/index.mjs", "private": true }
