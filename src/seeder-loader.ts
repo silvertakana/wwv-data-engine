@@ -1,17 +1,34 @@
 import { readdirSync, existsSync } from 'fs';
 import { join, resolve } from 'path';
+import type Redis from 'ioredis';
 
 // By default look for 'seeders' in the CWD (useful for volume mounting), fallback to '../seeders'
 const SEEDERS_DIR = process.env.SEEDERS_DIR || resolve(process.cwd(), 'seeders');
+
+/**
+ * The ONLY object a seeder receives at runtime. It is intentionally just the
+ * Redis client — there is no `setLiveSnapshot` (or any other helper) on it.
+ *
+ * To publish data, pick one of the two supported shapes (see README →
+ * "Authoring a Seeder"):
+ *   - interval + fetch: just RETURN the array; the scheduler wraps it into a
+ *     snapshot and stores it for you. No publishing call needed.
+ *   - cron + fn: import { setLiveSnapshot } from '@worldwideview/seeder-sdk'
+ *     and call it yourself. Do NOT reach for ctx.setLiveSnapshot — it does not
+ *     exist, and this type exists to make that mistake a compile error.
+ */
+export interface SeederContext {
+  redis: Redis;
+}
 
 export interface SeederModule {
   id: string;
   name: string;
   interval?: number;
   cron?: string;
-  fetch?: (ctx: any) => Promise<any>;
-  fn?: (ctx: any) => Promise<any> | void;
-  init?: (ctx: any) => void;
+  fetch?: (ctx: SeederContext) => Promise<any>;
+  fn?: (ctx: SeederContext) => Promise<any> | void;
+  init?: (ctx: SeederContext) => void;
 }
 
 function findSeederEntryPaths(baseDir: string, depth = 0): { id: string, entryPath: string }[] {

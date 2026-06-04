@@ -34,17 +34,68 @@ The engine starts at `http://localhost:5000`:
 - `GET /manifest` — List of available seeders
 - `WS /stream` — WebSocket endpoint for real-time data
 
-## Adding a New Seeder
+## Authoring a Seeder
 
-1. Create a new `.ts` file in `src/seeders/` (e.g., `volcanoes.ts`)
-2. Implement your polling/fetching logic
-3. Call `registerSeeder({ name: "volcanoes", cron: "0 * * * *", fn: seedVolcanoes })`
-4. That's it — auto-discovery picks it up automatically
+A seeder is a self-contained package the engine **auto-discovers** at startup.
+You do not register it manually — the loader (`src/seeder-loader.ts`) scans
+`SEEDERS_DIR` for any folder containing `dist/index.mjs` and imports its
+**default export**. The seeder's `id` is taken from the **folder name**, not
+from the `name` field, so the directory name is what the frontend subscribes to.
 
-See existing seeders for examples. Every seeder follows the same pattern:
-- Fetch data from a public API
-- Store in SQLite history via `db.prepare()`
-- Publish to Redis live cache via `setLiveSnapshot()`
+### The module shape
+
+The default export is an object with a `name` plus **one** of these shapes:
+
+| Shape | You provide | How data gets published |
+|---|---|---|
+| `interval` (ms) + `fetch(ctx)` | `fetch` **returns** the array | The scheduler wraps your return value into `{ source, fetchedAt, items, totalCount }`, stores it, and broadcasts it. You publish nothing yourself. |
+| `cron` (cron string) + `fn(ctx)` | `fn` publishes itself | Import and call `setLiveSnapshot` from `@worldwideview/seeder-sdk`. The scheduler does **not** wrap your return value. |
+| `init(ctx)` (no cron/interval) | a persistent listener | For push sources (e.g. an upstream WebSocket). Publish via the SDK as data arrives. |
+
+### The `ctx` object — read this before you write a line
+
+`ctx` is **only `{ redis }`**. There is no `ctx.setLiveSnapshot`, no
+`ctx.db`, no helpers. This is enforced by the `SeederContext` type in
+`src/seeder-loader.ts`, so reaching for a method that isn't there is a
+**compile error**, not a silent runtime failure. Everything you need to
+fetch, persist, and publish lives in `@worldwideview/seeder-sdk`.
+
+### Preferred: `interval` + `fetch` (self-contained, no SDK needed)
+
+```ts
+// dist/index.mjs — just return the array; the scheduler does the rest.
+export default {
+  name: "volcanoes",
+  interval: 60_000,
+  fetch: async () => {
+    const items = await loadVolcanoes();
+    return items; // -> stored + broadcast automatically
+  },
+};
+```
+
+### Dominant idiom: `cron` + `fn` (publish via the SDK)
+
+```ts
+import { db, setLiveSnapshot, fetchWithTimeout } from "@worldwideview/seeder-sdk";
+
+async function seedVolcanoes() {
+  const items = await fetchWithTimeout("https://example.org/volcanoes");
+  // optional history: db.prepare("INSERT OR IGNORE INTO ...").run(...)
+  await setLiveSnapshot("volcanoes", {
+    source: "volcanoes",
+    fetchedAt: new Date().toISOString(),
+    items,
+    totalCount: items.length,
+  }, 3600);
+}
+
+export default { name: "volcanoes", cron: "0 * * * *", fn: seedVolcanoes };
+```
+
+`db`, `setLiveSnapshot`, and the fetch helpers all come from
+`@worldwideview/seeder-sdk` — never from bare globals and never from `ctx`.
+See `local-seeders/community/` for runnable examples and a copyable template.
 
 ## Docker
 
