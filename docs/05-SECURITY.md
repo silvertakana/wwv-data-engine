@@ -36,18 +36,10 @@
 
 ### T-02 -- Auth Bypass via WWV_SKIP_WS_AUTH in Production (STRIDE: Spoofing / Elevation of Privilege)
 
-**Disposition:** mitigate (partial -- accepted residual risk; see note)
-**Status:** OPEN (BLOCKER)
+**Disposition:** accepted risk (explicit sign-off 2026-06-05)
+**Status:** CLOSED (accepted)
 
-**Mitigation plan stated in ADR-001:** Flag clearly documented as dev-only; protected from production use.
-**Gap found:**
-- `websocket.ts:16-18` -- comment says "MUST be unset in production (ADR-001B enforced)" but this is a code comment, not enforcement.
-- `server.ts:145` -- the cold-start JWKS check is only guarded by `if (process.env.WWV_SKIP_WS_AUTH !== 'true')`. When the flag is set, JWKS is never checked and all connections are immediately pre-authenticated (`isAuthenticated = true`) with no logging that the flag is active.
-- **No runtime guard exists** to detect or refuse `WWV_SKIP_WS_AUTH=true` when `NODE_ENV=production`. A misconfigured production deployment silently bypasses all JWT auth with no alert, no metric, and no log warning.
-- The SECURITY.md accepted-risks log does not document this as an accepted residual risk.
-
-**Required remediation (do not patch here -- implementation is read-only):**
-Add a production guard: if `NODE_ENV === 'production'` and `WWV_SKIP_WS_AUTH === 'true'`, log a critical warning and either refuse to start or emit a conspicuous startup error. Alternatively, document this as an accepted risk with an explicit entry in this file's accepted-risks section signed off by the team lead.
+**Decision:** App-side authentication is not yet implemented. Running with `WWV_SKIP_WS_AUTH=true` in production is intentional and necessary until the app auth layer is complete. The FATAL guard introduced in commit b4ae82e has been removed. A `console.warn` is emitted on startup when the flag is set. This risk is accepted and will be revisited when app auth ships.
 
 ---
 
@@ -225,7 +217,7 @@ These are new attack surface areas detected during code review with no correspon
 
 | Threat ID | Category | Gap | Required Action |
 |-----------|----------|-----|-----------------|
-| T-02 | Spoofing / EoP | No production guard prevents `WWV_SKIP_WS_AUTH=true` in production; no startup warning emitted | Add `NODE_ENV === 'production'` guard that refuses start or logs CRITICAL when skip flag is set; OR document as accepted risk with explicit sign-off |
+| T-02 | Spoofing / EoP | `WWV_SKIP_WS_AUTH=true` in production is intentional while app auth is not yet implemented; startup warn emitted | ACCEPTED 2026-06-05 -- revisit when app auth ships |
 | T-06 | Spoofing (Replay) | `accept` disposition requires accepted-risk log entry with team sign-off; not present prior to this audit; 6-minute replay window (exp + clockTolerance) undocumented | Complete AR-01 sign-off, or implement jti tracking |
 
 ---

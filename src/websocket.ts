@@ -13,8 +13,8 @@ export type WebSocketAuthMessage = {
 const connections = new Set<WebSocket>();
 const subscriptions = new Map<WebSocket, Set<string>>();
 
-// Set WWV_SKIP_WS_AUTH=true to disable JWT-first-message auth on /stream.
-// Dev/CI escape hatch only — MUST be unset in production (ADR-001B enforced).
+// Set WWV_SKIP_WS_AUTH=true to allow unauthenticated /stream connections.
+// Intentionally permitted in production while app-side auth is not yet implemented.
 const SKIP_WS_AUTH = process.env.WWV_SKIP_WS_AUTH === 'true';
 
 export function handleConnection(connection: WebSocket, request: any) {

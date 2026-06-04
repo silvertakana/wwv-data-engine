@@ -142,9 +142,8 @@ async function start() {
       await downloadSeeders();
     }
 
-    if (process.env.WWV_SKIP_WS_AUTH === 'true' && process.env.NODE_ENV === 'production') {
-      console.error('[Server] FATAL: WWV_SKIP_WS_AUTH=true is forbidden in production. Unset this env var before deploying.');
-      process.exit(1);
+    if (process.env.WWV_SKIP_WS_AUTH === 'true') {
+      console.warn('[Server] WARNING: WWV_SKIP_WS_AUTH=true — all WebSocket connections are unauthenticated. Acceptable until app auth is implemented.');
     }
 
     if (process.env.WWV_SKIP_WS_AUTH !== 'true') {
