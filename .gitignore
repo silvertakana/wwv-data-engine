@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# Exception: the CI stub seeder ships a prebuilt dist (Dockerfile.ci does a plain
+# COPY with no build step), so its dist must be tracked despite the dist/ rule.
+!ci/stub-seeder/dist/
 data/
 *.log
 .env
