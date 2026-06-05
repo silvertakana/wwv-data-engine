@@ -111,7 +111,7 @@ export async function run() {
 
     // 2. Generate pnpm-workspace.yaml
     const workspaceYamlPath = path.join(SEEDERS_DIR, 'pnpm-workspace.yaml');
-    const workspaceYamlContent = `packages:\n  - "community/*"\n  - "private/*"\n`;
+    const workspaceYamlContent = `packages:\n  - "community/packages/*"\n  - "private/packages/*"\n`;
     fs.writeFileSync(workspaceYamlPath, workspaceYamlContent);
     console.log(`[Downloader] Generated pnpm-workspace.yaml at ${workspaceYamlPath}`);
 
