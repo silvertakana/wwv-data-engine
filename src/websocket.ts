@@ -24,6 +24,10 @@ export function handleConnection(connection: WebSocket, request: any) {
   // and is rejected immediately, closing the race window.
   let authPending = false;
   let jwtExpTimeout: NodeJS.Timeout | null = null;
+  // Tracks whether authentication was established via the SKIP_WS_AUTH bypass
+  // (no real JWT verification). When true, subsequent auth messages are accepted
+  // for post-welcome JWT verification but the connection is never closed on failure.
+  let authBypassed = SKIP_WS_AUTH;
 
   // Pre-authenticate immediately when auth is bypassed
   if (SKIP_WS_AUTH) {
@@ -109,8 +113,28 @@ export function handleConnection(connection: WebSocket, request: any) {
     try {
       const data = JSON.parse(message);
       
-      // Re-authentication attempts on the same socket are forbidden and result in immediate closure.
+      // When auth was bypassed via SKIP_WS_AUTH, accept auth messages for
+      // post-welcome JWT verification. Verify the JWT but never close the
+      // connection on failure — the client had immediate access via bypass.
       if (data.type === 'auth') {
+        if (authBypassed) {
+          try {
+            const decoded = await verifyEngineToken(data.token);
+            authBypassed = false;
+            console.log(`[WS] Auth verified post-welcome for userId: ${decoded.sub}`);
+            const expMs = decoded.exp * 1000;
+            const now = Date.now();
+            const timeUntilExp = expMs - now;
+            jwtExpTimeout = setTimeout(() => {
+              connection.close(4001, 'Token expired');
+            }, Math.max(timeUntilExp, 0));
+          } catch (err: any) {
+            console.warn(`[WS] Auth verification failed: ${err.message}`);
+          }
+          return;
+        }
+        // Re-authentication attempts on the same socket (normal mode) are
+        // forbidden and result in immediate closure.
         connection.close(4003, 'Re-auth forbidden');
         return;
       }
