@@ -1,0 +1,54 @@
+name: Contract Verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'Dockerfile*'
+      - 'package.json'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  provider-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wwv
+          POSTGRES_PASSWORD: wwv
+          POSTGRES_DB: wwv
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+      - name: Start data engine
+        run: |
+          pnpm build
+          pnpm start &
+          sleep 10
+          curl -f http://127.0.0.1:5001/health || echo "Engine not ready yet"
+        env:
+          DATABASE_URL: postgres://wwv:wwv@localhost:5432/wwv
+      - name: Verify contracts
+        run: pnpm test:pact
+        env:
+          PACT_BROKER_URL: http://pactbroker.worldwideview.dev
+          PACT_BROKER_USERNAME: silver
+          PACT_BROKER_PASSWORD: ${{ secrets.PACT_BROKER_PASSWORD }}
