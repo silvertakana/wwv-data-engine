@@ -9,7 +9,7 @@ describe('Pact Verification', () => {
   test('complies with consumer contracts', async () => {
     const opts = {
       provider: 'WWVDataEngine',
-      providerBaseUrl: 'http://127.0.0.1:5001',
+      providerBaseUrl: 'http://127.0.0.1:5000',
       pactBrokerUrl: PACT_BROKER_URL,
       pactBrokerUsername: PACT_BROKER_USERNAME,
       pactBrokerPassword: PACT_BROKER_PASSWORD,
