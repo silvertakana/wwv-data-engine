@@ -1,0 +1,59 @@
+# # Project Configuration
+#
+# Project configuration lets teams share repository-specific settings — hooks, dev server URLs, and other defaults. The file lives in `.config/wt.toml` and is typically checked into version control.
+#
+# To create a starter file with commented-out examples, run `wt config create --project`.
+#
+# ## Hooks
+#
+# Project hooks apply to this repository only. See `wt hook` (https://worktrunk.dev/hook/) for hook types, execution order, and examples.
+#
+# pre-start = "npm ci"
+# post-start = "npm run dev"
+# pre-merge = "npm test"
+#
+# ## Dev server URL
+#
+# URL column in `wt list` (dimmed when port not listening):
+#
+# [list]
+# url = "http://localhost:{{ branch | hash_port }}"
+#
+# ## Forge platform
+#
+# Name the forge explicitly for SSH aliases or self-hosted instances, where it can't be detected from the remote URL:
+#
+# [forge]
+# platform = "github"  # or "gitlab", "gitea" (experimental), "azure-devops" (experimental)
+# hostname = "github.example.com"  # Example: API host (GHE / self-hosted GitLab)
+#
+# ## Commit-message append [experimental]
+#
+# Project-wide commit-message conventions appended to the LLM commit and squash prompts inside a `<project-guidance>` block, after the main template's `<style>` section (and after any user `<user-guidance>`). Rendered as a minijinja (https://docs.rs/minijinja/) template with the same variables as the main commit template (`{{ branch }}`, `{{ git_diff }}`, etc.), so it can reference them directly. The first time the fragment changes, `wt` prompts the user to approve it — the same one-shot gate as project-defined hooks.
+#
+# [commit.generation]
+# template-append = """
+# - Use conventional commits (feat:, fix:, docs:, …)
+# - Reference the relevant issue ID in the body
+# """
+#
+# Only `template-append` is honored from the project file. The LLM command and the main prompt template stay in user config (https://worktrunk.dev/config/) — they describe per-developer environment (which CLI is installed, which agent the developer prefers). User config has a `[commit.generation] template-append` of its own; it renders into a separate `<user-guidance>` block immediately before this one.
+#
+# ## Copy-ignored excludes
+#
+# Additional excludes for `wt step copy-ignored`:
+#
+# [step.copy-ignored]
+# exclude = [".cache/", ".turbo/"]
+#
+# Built-in excludes always apply: VCS metadata directories (`.bzr/`, `.hg/`, `.jj/`, `.pijul/`, `.sl/`, `.svn/`) and tool-state directories (`.conductor/`, `.entire/`, `.worktrees/`). User config and project config exclusions are combined.
+#
+# ## Aliases
+#
+# Command templates that run as `wt <name>`. See the Extending Worktrunk guide (https://worktrunk.dev/extending/#aliases) for usage and flags.
+#
+# [aliases]
+# deploy = "make deploy BRANCH={{ branch }}"
+# url = "echo http://localhost:{{ branch | hash_port }}"
+#
+# Aliases defined here are shared with teammates. For personal aliases, use the user config (https://worktrunk.dev/config/#aliases) `[aliases]` section instead.
