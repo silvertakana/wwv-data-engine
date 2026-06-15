@@ -6,47 +6,17 @@ on:
       - main
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
+  build:
+    uses: silvertakana/worldwideview/.github/workflows/shared-docker.yml@ci/infra-overhaul
+    with:
+      tags: |
+        type=raw,value=latest
+        type=sha,prefix=sha-
+    secrets: inherit
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/silvertakana/wwv-data-engine:latest
-
-      - name: Build and push CI image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile.ci
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/silvertakana/wwv-data-engine:ci
-
-      - name: Trigger Coolify API Service Restart
-        run: |
-          if [ -n "${{ secrets.COOLIFY_API_TOKEN }}" ]; then
-            curl -sS -X POST "https://coolify.worldwideview.dev/api/v1/services/slv47hjfvip5h1xggsc3yenm/restart" \
-              -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
-              -H "Content-Type: application/json"
-          else
-            echo "COOLIFY_API_TOKEN secret is not set, skipping service restart."
-          fi
+  build-ci:
+    uses: silvertakana/worldwideview/.github/workflows/shared-docker.yml@ci/infra-overhaul
+    with:
+      tags: type=raw,value=ci
+      smoke-test-path: /
+    secrets: inherit
