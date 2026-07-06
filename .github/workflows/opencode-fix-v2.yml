@@ -141,11 +141,10 @@ jobs:
       - name: Run OpenCode
         uses: anomalyco/opencode/github@v1.17.13
         env:
-          OPENAI_API_KEY: ${{ secrets.LITELLM_API_KEY }}
-          OPENAI_BASE_URL: https://llm2.worldwideview.dev/v1
+          DEEPSEEK_API_KEY: ${{ secrets.LITELLM_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: openai/deepseek/deepseek-v4-flash
+          model: deepseek/deepseek-v4-flash
           use_github_token: true
           share: false
           mentions: '/opencode,/oc,/gremlin'
