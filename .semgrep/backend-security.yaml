@@ -1,0 +1,64 @@
+rules:
+  - id: command-injection
+    pattern-either:
+      - pattern: execSync(...)
+      - pattern: exec(...)
+      - pattern: spawnSync(...)
+      - pattern: child_process.exec(...)
+      - pattern: child_process.execSync(...)
+    message: Potential command injection - validate and sanitize all inputs
+    languages: [typescript]
+    severity: ERROR
+
+  - id: sql-injection-better-sqlite3
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $DB.prepare("..." + $VALUE + "...")
+          - pattern: |
+              $DB.prepare(`...${$VALUE}...`)
+    message: Possible SQL injection - use parameterized queries ($VALUE = ?)
+    languages: [typescript]
+    severity: ERROR
+
+  - id: hardcoded-secrets
+    pattern-either:
+      - pattern: |
+          $VAR = "..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(secret|password|api.?key|token|credential|auth).*
+    message: Potential hardcoded secret - use environment variables
+    languages: [typescript]
+    severity: WARNING
+
+  - id: path-traversal
+    pattern-either:
+      - pattern: fs.readFileSync($PATH)
+      - pattern: fs.readFile($PATH, ...)
+      - pattern: fs.writeFileSync($PATH, ...)
+      - pattern: fs.writeFile($PATH, ...)
+    message: File operations with user-controlled paths may cause traversal
+    languages: [typescript]
+    severity: WARNING
+
+  - id: weak-crypto
+    pattern-either:
+      - pattern: crypto.createHash("md5")
+      - pattern: crypto.createHash("sha1")
+      - pattern: crypto.createHash("MD5")
+      - pattern: crypto.createHash("SHA1")
+      - pattern: Math.random()
+    message: Use cryptographic-quality randomness (crypto.randomBytes) and modern hashing (SHA-256+)
+    languages: [typescript]
+    severity: WARNING
+
+  - id: unsafe-deserialization
+    pattern-either:
+      - pattern: JSON.parse(...)
+      - metavariable-pattern:
+          metavariable: $FUNC
+          pattern: eval
+    message: 'Unsafe deserialization - prefer JSON.parse for trusted data only'
+    languages: [typescript]
+    severity: ERROR
