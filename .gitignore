@@ -21,5 +21,8 @@ local-scripts/
 # Dev-only files
 Dockerfile.dev
 
+# Coverage reports
+coverage/
+
 # claude code (personal)
 /.claude/settings.local.json

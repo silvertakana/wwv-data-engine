@@ -60,7 +60,7 @@ fastify.register(fastifyCors, {
 fastify.register(fastifyWebsocket);
 
 fastify.register(async function (fastify) {
-  // @ts-ignore - RouteShorthandOptions augmentation missing for websocket in strict mode
+  // @ts-expect-error - RouteShorthandOptions augmentation missing for websocket in strict mode
   fastify.get('/stream', { 
     websocket: true,
     preValidation: (request: any, reply: any, done: any) => {

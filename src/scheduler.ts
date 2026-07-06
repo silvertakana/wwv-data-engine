@@ -1,5 +1,6 @@
-import { setLiveSnapshot } from './redis';
+import { setLiveSnapshot, redis } from './redis';
 import type { SeederModule } from './seeder-loader';
+import cron from 'node-cron';
 
 // Registry to hold all registered seeders
 let registeredSeeders: SeederModule[] = [];
@@ -35,7 +36,7 @@ export function startScheduler() {
     // 1. Run init handlers (like websocket listeners)
     if (seeder.init) {
       console.log(`[Scheduler] Initializing persistent seeder: ${seeder.id}`);
-      seeder.init({ redis: require('./redis').redis });
+      seeder.init({ redis });
     }
     
     // 2. Schedule interval jobs
@@ -45,7 +46,7 @@ export function startScheduler() {
       const runSeeder = async () => {
         try {
           console.log(`[Scheduler] Running seeder: ${seeder.id} ...`);
-          const data = await seeder.fetch!({ redis: require('./redis').redis });
+          const data = await seeder.fetch!({ redis });
           
           if (data) {
             // Save payload to Redis & broadcast to WebSocket
@@ -77,13 +78,13 @@ export function startScheduler() {
     // 3. Schedule cron jobs
     if (seeder.cron && seeder.fn) {
       console.log(`[Scheduler] Scheduling cron seeder: ${seeder.id} (${seeder.cron})`);
-      const cron = require('node-cron');
+      // cron imported at top of file
       
       const runCronSeeder = async () => {
         try {
           console.log(`[Scheduler] Running cron seeder: ${seeder.id} ...`);
           // Many legacy plugins handle their own setLiveSnapshot internally
-          await seeder.fn!({ redis: require('./redis').redis });
+          await seeder.fn!({ redis });
           seederStatus[seeder.id] = Date.now();
         } catch (error: any) {
           console.error(`[Scheduler] Cron Seeder ${seeder.id} failed:`, error.message);
