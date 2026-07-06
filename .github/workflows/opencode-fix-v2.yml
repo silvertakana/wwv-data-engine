@@ -145,7 +145,7 @@ jobs:
           OPENAI_BASE_URL: https://llm2.worldwideview.dev/v1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: litellm/deepseek-v4-flash
+          model: openai/deepseek/deepseek-v4-flash
           use_github_token: true
           share: false
           mentions: '/opencode,/oc,/gremlin'
