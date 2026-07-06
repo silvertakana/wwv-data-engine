@@ -18,5 +18,8 @@ migrate*.log
 prisma_push.log
 local-scripts/
 
+# Dev-only files
+Dockerfile.dev
+
 # claude code (personal)
 /.claude/settings.local.json
