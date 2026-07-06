@@ -1,0 +1,77 @@
+{
+  "ci/stub-seeder/package.json": {
+    "mtime": 1780573687.3916023,
+    "ast_hash": "9c7ec65ced284479b04997e192d048d8",
+    "semantic_hash": "9c7ec65ced284479b04997e192d048d8"
+  },
+  "package.json": {
+    "mtime": 1780619928.5047565,
+    "ast_hash": "c6898d17d6f8429ac47ba8bd7a03280a",
+    "semantic_hash": "c6898d17d6f8429ac47ba8bd7a03280a"
+  },
+  "src/jwt-auth.ts": {
+    "mtime": 1780573687.3946476,
+    "ast_hash": "4757b7955db6f78f21895767224eadc2",
+    "semantic_hash": "4757b7955db6f78f21895767224eadc2"
+  },
+  "src/port-contract.spec.ts": {
+    "mtime": 1780573687.396161,
+    "ast_hash": "5541338fd8bf855e3b0e157af523e008",
+    "semantic_hash": "5541338fd8bf855e3b0e157af523e008"
+  },
+  "src/redis.ts": {
+    "mtime": 1778416431.1089718,
+    "ast_hash": "bc194e7504e3dabcf870ace947bc69c4",
+    "semantic_hash": "bc194e7504e3dabcf870ace947bc69c4"
+  },
+  "src/scheduler.ts": {
+    "mtime": 1779278888.8303485,
+    "ast_hash": "2c61123ae889e41f355c02a0987be4ad",
+    "semantic_hash": "2c61123ae889e41f355c02a0987be4ad"
+  },
+  "src/scripts/download-seeders.ts": {
+    "mtime": 1780619921.6345596,
+    "ast_hash": "a3f48419c8cbfb3d6d501dfb32683328",
+    "semantic_hash": "a3f48419c8cbfb3d6d501dfb32683328"
+  },
+  "src/seeder-loader.ts": {
+    "mtime": 1780617492.8240974,
+    "ast_hash": "baaec23bde737c8432f3203ff28c2e77",
+    "semantic_hash": "baaec23bde737c8432f3203ff28c2e77"
+  },
+  "src/server.ts": {
+    "mtime": 1780617499.5141397,
+    "ast_hash": "50f3f27571769667e8ad2d0b11d1b922",
+    "semantic_hash": "50f3f27571769667e8ad2d0b11d1b922"
+  },
+  "src/startup-checks.ts": {
+    "mtime": 1779585500.0969827,
+    "ast_hash": "52c9a8a5c0a2c681a8528000e62fb0df",
+    "semantic_hash": "52c9a8a5c0a2c681a8528000e62fb0df"
+  },
+  "src/websocket-auth-enforcement.spec.ts": {
+    "mtime": 1780573687.3986816,
+    "ast_hash": "1214c6e392c5d430e42644584e1e0e36",
+    "semantic_hash": "1214c6e392c5d430e42644584e1e0e36"
+  },
+  "src/websocket.spec.ts": {
+    "mtime": 1780573687.4001946,
+    "ast_hash": "121de2c1d97116a3599dd5857db68e2e",
+    "semantic_hash": "121de2c1d97116a3599dd5857db68e2e"
+  },
+  "src/websocket.ts": {
+    "mtime": 1780617499.5151396,
+    "ast_hash": "6455ea35ea06d8f014c1929a4257c631",
+    "semantic_hash": "6455ea35ea06d8f014c1929a4257c631"
+  },
+  "tsconfig.json": {
+    "mtime": 1778416431.1202188,
+    "ast_hash": "a63f80b84512fda3cb9199208d86541e",
+    "semantic_hash": "a63f80b84512fda3cb9199208d86541e"
+  },
+  "vitest.config.ts": {
+    "mtime": 1779585500.100013,
+    "ast_hash": "c12cfd5d7e16bc5729725193781b8abe",
+    "semantic_hash": "c12cfd5d7e16bc5729725193781b8abe"
+  }
+}

@@ -1,0 +1,330 @@
+{
+  "communities": {
+    "0": [
+      "scripts_download_seeders",
+      "scripts_download_seeders_downloadrelease",
+      "scripts_download_seeders_repos",
+      "scripts_download_seeders_run",
+      "src_redis",
+      "src_redis_lastsnapshottimes",
+      "src_redis_redis",
+      "src_redis_setlivesnapshot",
+      "src_scheduler",
+      "src_scheduler_getregisteredpluginids",
+      "src_scheduler_registeredseeders",
+      "src_scheduler_registerseeders",
+      "src_scheduler_seederstatus",
+      "src_scheduler_startscheduler",
+      "src_seeder_loader",
+      "src_seeder_loader_discoverseeders",
+      "src_seeder_loader_findseederentrypaths",
+      "src_seeder_loader_seedercontext",
+      "src_seeder_loader_seedermodule",
+      "src_server",
+      "src_server_enginepkg",
+      "src_server_fastify",
+      "src_server_gracefulshutdown",
+      "src_server_port",
+      "src_server_start",
+      "src_startup_checks",
+      "src_startup_checks_checkjwksreachable",
+      "src_websocket",
+      "src_websocket_auth_enforcement_spec",
+      "src_websocket_broadcastplugindata",
+      "src_websocket_connections",
+      "src_websocket_handleconnection",
+      "src_websocket_spec",
+      "src_websocket_spec_createtoken",
+      "src_websocket_subscriptions",
+      "src_websocket_websocketauthmessage"
+    ],
+    "1": [
+      "agent_plans_2026_05_14_decentralized_plugin_auth_md",
+      "allowed_origins",
+      "docs_05_security_md",
+      "fastify",
+      "fastify_jwt",
+      "get_jwks",
+      "jose",
+      "jwks",
+      "jwt",
+      "jwt_auth_ts",
+      "package_dependencies_fastify",
+      "server_ts",
+      "src_auth_ts",
+      "src_websocket_ts",
+      "startup_checks_ts",
+      "threat_t01",
+      "threat_t02",
+      "threat_t03",
+      "threat_t04",
+      "threat_t05",
+      "threat_t06",
+      "threat_t07",
+      "threat_t08",
+      "threat_t09",
+      "threat_t10",
+      "threat_t11",
+      "wwv_skip_ws_auth"
+    ],
+    "2": [
+      "alienvault_otx",
+      "celestrak_norad_tles",
+      "civil_unrest_seeder",
+      "conflict_events_seeder",
+      "cyber_attacks_seeder",
+      "docker_compose_yaml",
+      "earthquakes_seeder",
+      "gdelt_project",
+      "gps_jamming_seeder",
+      "iss_seeder",
+      "nasa_firms",
+      "ofac_us_treasury",
+      "readme_md",
+      "redis",
+      "redis_data_volume",
+      "sanctions_seeder",
+      "satellites_seeder",
+      "seeder_sdk",
+      "src_seeder_loader_ts",
+      "usgs_geojson_feed",
+      "websocket",
+      "wheretheiss_at",
+      "wildfires_seeder",
+      "wwv_data_engine",
+      "wwv_data_engine_service",
+      "wwv_redis_cache_service"
+    ],
+    "3": [
+      "package_dependencies",
+      "package_dependencies_adm_zip",
+      "package_dependencies_better_sqlite3",
+      "package_dependencies_cheerio",
+      "package_dependencies_csv_parse",
+      "package_dependencies_dotenv",
+      "package_dependencies_fastify_cors",
+      "package_dependencies_fastify_rate_limit",
+      "package_dependencies_fastify_websocket",
+      "package_dependencies_geoip_lite",
+      "package_dependencies_ioredis",
+      "package_dependencies_jose",
+      "package_dependencies_node_cron",
+      "package_dependencies_satellite_js",
+      "package_dependencies_sax",
+      "package_dependencies_sentry_node",
+      "package_dependencies_undici",
+      "package_dependencies_worldwideview_wwv_plugin_sdk",
+      "package_dependencies_ws",
+      "package_dependencies_zod",
+      "zod"
+    ],
+    "4": [
+      "package",
+      "package_description",
+      "package_main",
+      "package_name",
+      "package_packagemanager",
+      "package_pnpm",
+      "package_pnpm_onlybuiltdependencies",
+      "package_scripts",
+      "package_scripts_build",
+      "package_scripts_dev",
+      "package_scripts_start",
+      "package_scripts_test",
+      "package_scripts_typecheck",
+      "package_version"
+    ],
+    "5": [
+      "package_devdependencies",
+      "package_devdependencies_ts_node",
+      "package_devdependencies_tsx",
+      "package_devdependencies_types_adm_zip",
+      "package_devdependencies_types_better_sqlite3",
+      "package_devdependencies_types_geoip_lite",
+      "package_devdependencies_types_node",
+      "package_devdependencies_types_node_cron",
+      "package_devdependencies_types_sax",
+      "package_devdependencies_types_ws",
+      "package_devdependencies_typescript",
+      "package_devdependencies_vitest"
+    ],
+    "6": [
+      "tsconfig",
+      "tsconfig_compileroptions",
+      "tsconfig_compileroptions_esmoduleinterop",
+      "tsconfig_compileroptions_forceconsistentcasinginfilenames",
+      "tsconfig_compileroptions_module",
+      "tsconfig_compileroptions_moduleresolution",
+      "tsconfig_compileroptions_outdir",
+      "tsconfig_compileroptions_resolvejsonmodule",
+      "tsconfig_compileroptions_skiplibcheck",
+      "tsconfig_compileroptions_strict",
+      "tsconfig_compileroptions_target",
+      "tsconfig_include"
+    ],
+    "7": [
+      "src_jwt_auth",
+      "src_jwt_auth_acceptedaudiences",
+      "src_jwt_auth_enginetokenclaims",
+      "src_jwt_auth_getkeyresolver",
+      "src_jwt_auth_josemodule",
+      "src_jwt_auth_jwksresolver",
+      "src_jwt_auth_loadjose",
+      "src_jwt_auth_verifyenginetoken"
+    ],
+    "8": [
+      "ci_yml",
+      "claude_code_review_yml",
+      "docker_publish_yml",
+      "github_actions",
+      "mutation_testing_yml",
+      "node_matrix_yml"
+    ],
+    "9": [
+      "src_port_contract_spec",
+      "src_port_contract_spec_extractenginedefaultport",
+      "src_port_contract_spec_extractlocalhostport",
+      "src_port_contract_spec_frontendrepopresent",
+      "src_port_contract_spec_readenginefile",
+      "src_port_contract_spec_readfrontendfile"
+    ],
+    "10": [
+      "stub_seeder_package",
+      "stub_seeder_package_main",
+      "stub_seeder_package_name",
+      "stub_seeder_package_private",
+      "stub_seeder_package_type",
+      "stub_seeder_package_version"
+    ],
+    "11": [
+      "vitest_config"
+    ]
+  },
+  "cohesion": {
+    "0": 0.10476190476190476,
+    "1": 0.14245014245014245,
+    "2": 0.12615384615384614,
+    "3": 0.09523809523809523,
+    "4": 0.14285714285714285,
+    "5": 0.16666666666666666,
+    "6": 0.16666666666666666,
+    "7": 0.39285714285714285,
+    "8": 0.3333333333333333,
+    "9": 0.3333333333333333,
+    "10": 0.3333333333333333,
+    "11": 1.0
+  },
+  "gods": [
+    {
+      "id": "docs_05_security_md",
+      "label": "Security Documentation (Phase 5)",
+      "degree": 22
+    },
+    {
+      "id": "wwv_data_engine",
+      "label": "WorldWideView Data Engine",
+      "degree": 13
+    },
+    {
+      "id": "jwt_auth_ts",
+      "label": "src/jwt-auth.ts",
+      "degree": 11
+    },
+    {
+      "id": "tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 10
+    },
+    {
+      "id": "src_websocket_ts",
+      "label": "src/websocket.ts",
+      "degree": 10
+    },
+    {
+      "id": "agent_plans_2026_05_14_decentralized_plugin_auth_md",
+      "label": "Decentralized Plugin Auth Plan",
+      "degree": 9
+    },
+    {
+      "id": "fastify",
+      "label": "Fastify",
+      "degree": 7
+    },
+    {
+      "id": "package_scripts",
+      "label": "scripts",
+      "degree": 6
+    },
+    {
+      "id": "src_jwt_auth_verifyenginetoken",
+      "label": "verifyEngineToken()",
+      "degree": 6
+    },
+    {
+      "id": "src_server_start",
+      "label": "start()",
+      "degree": 6
+    }
+  ],
+  "surprises": [
+    {
+      "source": "src/jwt-auth.ts",
+      "target": "get-jwks",
+      "source_files": [
+        "src/jwt-auth.ts",
+        ".agents/plans/2026-05-14-decentralized-plugin-auth.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc \u2194 code); connects across different repos/directories; peripheral node `get-jwks` unexpectedly reaches hub `src/jwt-auth.ts`"
+    },
+    {
+      "source": "Decentralized Plugin Auth Plan",
+      "target": "src/auth.ts",
+      "source_files": [
+        ".agents/plans/2026-05-14-decentralized-plugin-auth.md",
+        "src/auth.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "crosses file types (doc \u2194 code); connects across different repos/directories; peripheral node `src/auth.ts` unexpectedly reaches hub `Decentralized Plugin Auth Plan`"
+    },
+    {
+      "source": "src/server.ts",
+      "target": "Fastify",
+      "source_files": [
+        "src/server.ts",
+        ".agents/plans/2026-05-14-decentralized-plugin-auth.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc \u2194 code); connects across different repos/directories"
+    },
+    {
+      "source": "src/websocket.ts",
+      "target": "Fastify",
+      "source_files": [
+        "src/websocket.ts",
+        ".agents/plans/2026-05-14-decentralized-plugin-auth.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc \u2194 code); connects across different repos/directories"
+    },
+    {
+      "source": "src/jwt-auth.ts",
+      "target": "jose",
+      "source_files": [
+        "src/jwt-auth.ts",
+        "docs/05-SECURITY.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc \u2194 code); connects across different repos/directories"
+    }
+  ],
+  "tokens": {
+    "input": 8225,
+    "output": 17352
+  }
+}
