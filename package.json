@@ -17,7 +17,7 @@
     "@fastify/websocket": "^11.2.0",
     "@sentry/node": "^10.48.0",
     "@worldwideview/wwv-plugin-sdk": "^1.5.0",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "better-sqlite3": "^12.8.0",
     "cheerio": "^1.2.0",
     "csv-parse": "^5.6.0",
@@ -29,8 +29,8 @@
     "node-cron": "^3.0.3",
     "satellite.js": "^7.0.0",
     "sax": "^1.6.0",
-    "undici": "^8.2.0",
-    "ws": "^8.18.0",
+    "undici": "^8.9.0",
+    "ws": "^8.21.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -44,6 +44,7 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.19.0",
     "typescript": "^5.6.2",
+    "vite": "^8.0.16",
     "vitest": "^4.1.6"
   },
   "pnpm": {
@@ -51,6 +52,14 @@
       "better-sqlite3",
       "@sentry-internal/node-cpu-profiler",
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "brace-expansion": "^5.0.9",
+      "fast-uri": "^3.1.5",
+      "find-my-way": "^9.7.0",
+      "ip-address": "^10.3.1",
+      "postcss": "^8.5.18",
+      "undici@<8": "^7.29.0"
+    }
   }
 }
