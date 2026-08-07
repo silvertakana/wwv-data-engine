@@ -1,0 +1,13 @@
+FROM node:22-alpine
+RUN corepack enable pnpm
+WORKDIR /app
+
+RUN apk add --no-cache python3 make g++
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm config set node-linker hoisted
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm rebuild better-sqlite3
+
+ENV NEXT_TELEMETRY_DISABLED=1
+EXPOSE 5000
+CMD ["pnpm", "run", "dev"]

@@ -4,9 +4,9 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 import * as Sentry from '@sentry/node';
 
-if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+if (process.env.SENTRY_DSN) {
   Sentry.init({
-    dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    dsn: process.env.SENTRY_DSN,
     tracesSampleRate: 0.1,
   });
 }
@@ -14,7 +14,7 @@ if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
 import Fastify from 'fastify';
 import { startScheduler } from './scheduler';
 import { seederStatus } from './scheduler';
-import { discoverSeeders } from './seeder-loader';
+import { discoverSeeders, toKebabCase } from './seeder-loader';
 import { registerSeeders } from './scheduler';
 
 // Boot Fastify
@@ -23,7 +23,7 @@ export const fastify = Fastify({
 });
 
 fastify.setErrorHandler(function (error: any, request, reply) {
-  if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+  if (process.env.SENTRY_DSN) {
     Sentry.captureException(error, {
       extra: {
         method: request.method,
@@ -40,9 +40,13 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import fastifyCors from '@fastify/cors';
 import { handleConnection } from './websocket';
 
+// Per-route rate limits — global: false lets each route declare its own config.
+// The /stream endpoint handles WebSocket upgrades: reconnect bursts after an
+// engine restart easily exceed a tight global limit and flood the error log with 429s.
 fastify.register(fastifyRateLimit, {
-  max: 100,
-  timeWindow: '1 minute'
+  global: false,
+  keyGenerator: (request: any) =>
+    request.headers['x-real-ip'] || request.headers['x-forwarded-for'] || request.ip,
 });
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
@@ -54,11 +58,35 @@ fastify.register(fastifyCors, {
   methods: ['GET', 'OPTIONS'],
 });
 
+// JWT ticket verification (ADR-001B) lives in jwt-auth.ts and is exercised by
+// the WebSocket first-message auth in websocket.ts — no Fastify plugin needed.
+
 fastify.register(fastifyWebsocket);
 
 fastify.register(async function (fastify) {
   // @ts-ignore - RouteShorthandOptions augmentation missing for websocket in strict mode
-  fastify.get('/stream', { websocket: true }, (connection: any, req) => {
+  fastify.get('/stream', {
+    websocket: true,
+    // 60 WS upgrades per 10 seconds per IP — handles reconnect bursts after restart
+    // without allowing genuine flood attacks.
+    config: { rateLimit: { max: 60, timeWindow: '10 seconds' } },
+    preValidation: (request: any, reply: any, done: any) => {
+      const allowedOrigins = process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+        : ['*'];
+
+      const origin = request.headers.origin || '';
+      if (!allowedOrigins.includes('*') && !allowedOrigins.includes(origin)) {
+        return reply.code(403).send('Forbidden Origin');
+      }
+
+      if (process.env.NODE_ENV === 'production' && request.headers['x-forwarded-proto'] !== 'https') {
+        return reply.code(403).send('HTTPS Required');
+      }
+
+      done();
+    }
+  }, (connection: any, req: any) => {
     handleConnection(connection, req);
   });
 });
@@ -74,14 +102,16 @@ fastify.get('/health', async (request, reply) => {
   };
 });
 
-import { getRegisteredPluginIds } from './scheduler';
+import { getRegisteredPluginIds, getRegisteredSeederNames } from './scheduler';
 import { readFileSync } from 'fs';
 
 const enginePkg = JSON.parse(
   readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
 );
 
-fastify.get('/manifest', async () => {
+fastify.get('/manifest', {
+  config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+}, async () => {
   return {
     engine: 'wwv-data-engine',
     version: enginePkg.version,
@@ -91,26 +121,36 @@ fastify.get('/manifest', async () => {
   };
 });
 
+fastify.get('/api/seeders/active', async () => {
+  return {
+    activeSeeders: getRegisteredSeederNames(),
+    timestamp: Date.now()
+  };
+});
+
 import { getLiveSnapshot } from './redis';
 import { canonicalSeederFor } from './seeder-aliases';
 
-fastify.get('/api/:id', async (request, reply) => {
-  const { id } = request.params as { id: string };
-
-  // Resolve UI-plugin aliases to the canonical seeder name. Plugins
-  // ask under their own id (e.g. "cyber-attacks") but seeders may be
-  // running under a different convention (e.g. "cyberAttacks"). Without
+async function handleSnapshotRequest(id: string, reply: any) {
+  // Resolve UI-plugin aliases to the canonical seeder name. Plugins ask
+  // under their own id (e.g. "conflict-zones") but seeders may be running
+  // under a different declared name (e.g. "conflict-events"). Without
   // this, every snapshot request from an alias-using plugin 404s even
-  // when the seeder is alive — same family of bug `websocket.ts` fixes
-  // on the WS subscribe path.
+  // when the seeder is alive, same family of bug websocket.ts fixes on
+  // the WS subscribe path.
   const seederName = canonicalSeederFor(id);
 
-  // Try the resolved name first. Fall back to the raw id only if the
-  // alias-resolved lookup miss-fired (e.g. a future seeder uses the
-  // kebab-case name directly and the alias map is stale).
-  let snapshot = await getLiveSnapshot(seederName);
-  if (!snapshot && seederName !== id) {
-    snapshot = await getLiveSnapshot(id);
+  // Try the alias-resolved name first, then kebab-case normalization of
+  // the raw id (e.g. /api/civilUnrest when the seeder name is
+  // "civil-unrest"), then the raw id itself. First hit wins; each
+  // lookup is a cheap Redis GET on a rate-limited route.
+  const candidates = [seederName, toKebabCase(id)];
+  if (!candidates.includes(id)) candidates.push(id);
+
+  let snapshot: any = null;
+  for (const candidate of candidates) {
+    snapshot = await getLiveSnapshot(candidate);
+    if (snapshot) break;
   }
 
   if (!snapshot) {
@@ -120,20 +160,56 @@ fastify.get('/api/:id', async (request, reply) => {
   // Some seeders wrap their output in { items: ... }, others don't.
   // To ensure the frontend always gets an object with `items` if it expects one,
   // we can check if `snapshot` already has `items`.
-  if (snapshot && typeof snapshot === 'object' && !('items' in snapshot)) {
+  if (typeof snapshot === 'object' && !('items' in snapshot)) {
     return { items: snapshot };
   }
 
   return snapshot;
+}
+
+fastify.get('/api/:id', {
+  config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+}, async (request, reply) => {
+  const { id } = request.params as { id: string };
+  return handleSnapshotRequest(id, reply);
+});
+
+// Backwards-compatible alias — plugin bundles published before the /api/:id
+// refactor call this path. Keep in sync with /api/:id above.
+fastify.get('/data/:id', {
+  config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+}, async (request, reply) => {
+  const { id } = request.params as { id: string };
+  return handleSnapshotRequest(id, reply);
 });
 
 import { run as downloadSeeders } from './scripts/download-seeders';
+import { checkJwksReachable } from './startup-checks';
 
 async function start() {
   try {
     if (process.env.DOWNLOAD_SEEDERS === 'true') {
       console.log('[Server] DOWNLOAD_SEEDERS is true. Downloading latest seeders...');
       await downloadSeeders();
+    }
+
+    if (process.env.WWV_SKIP_WS_AUTH === 'true') {
+      console.warn('[Server] WARNING: WWV_SKIP_WS_AUTH=true — all WebSocket connections are unauthenticated. Acceptable until app auth is implemented.');
+    }
+
+    if (process.env.WWV_SKIP_WS_AUTH !== 'true') {
+      const jwksUrl = process.env.JWKS_URL;
+      if (!jwksUrl) {
+        console.error('[Server] JWKS_URL required when auth is enabled');
+        process.exit(1);
+      }
+      try {
+        await checkJwksReachable(jwksUrl);
+        console.log('[Server] JWKS reachable at', jwksUrl);
+      } catch (e) {
+        console.error('[Server] FATAL: JWKS unreachable at startup:', jwksUrl);
+        process.exit(1);
+      }
     }
 
     // 1. Discover dynamic seeders from configured directory

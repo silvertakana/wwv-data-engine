@@ -1,20 +1,23 @@
 {
   "name": "@worldwideview/wwv-data-engine",
-  "version": "1.5.3",
+"version": "1.8.5",
   "packageManager": "pnpm@9.15.4",
   "description": "WWV Data Engine - Dual-tier Shared Backend",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/websocket": "^11.2.0",
     "@sentry/node": "^10.48.0",
-    "adm-zip": "^0.5.17",
+    "@worldwideview/wwv-plugin-sdk": "^1.5.0",
+    "adm-zip": "^0.6.0",
     "better-sqlite3": "^12.8.0",
     "cheerio": "^1.2.0",
     "csv-parse": "^5.6.0",
@@ -22,11 +25,12 @@
     "fastify": "^5.0.0",
     "geoip-lite": "^2.0.1",
     "ioredis": "^5.4.1",
+    "jose": "^6.2.3",
     "node-cron": "^3.0.3",
     "satellite.js": "^7.0.0",
     "sax": "^1.6.0",
-    "undici": "^8.2.0",
-    "ws": "^8.18.0",
+    "undici": "^8.9.0",
+    "ws": "^8.21.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -39,13 +43,23 @@
     "@types/ws": "^8.5.12",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.6"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "@sentry-internal/node-cpu-profiler",
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "brace-expansion": "^5.0.9",
+      "fast-uri": "^3.1.5",
+      "find-my-way": "^9.7.0",
+      "ip-address": "^10.3.1",
+      "postcss": "^8.5.18",
+      "undici@<8": "^7.29.0"
+    }
   }
 }

@@ -12,6 +12,14 @@ export function getRegisteredPluginIds(): string[] {
   return registeredSeeders.map(s => s.id);
 }
 
+/**
+ * Returns the list of registered seeder exported names.
+ * Used for development validation and ensuring names match frontend plugin IDs.
+ */
+export function getRegisteredSeederNames(): string[] {
+  return registeredSeeders.map(s => s.name);
+}
+
 // Registry to track the last run time of each seeder
 export const seederStatus: Record<string, number | null> = {};
 

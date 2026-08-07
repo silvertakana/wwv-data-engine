@@ -1,0 +1,5 @@
+# CI variant of the data engine: identical runtime to the production image,
+# plus a baked-in stub seeder so plugin-CI has deterministic data with no
+# external upstream. The stub stays dormant unless STUB_PLUGIN_ID is set.
+FROM ghcr.io/silvertakana/wwv-data-engine:latest
+COPY ci/stub-seeder /app/seeders/stub

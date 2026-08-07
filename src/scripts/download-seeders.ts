@@ -74,11 +74,23 @@ export async function run() {
     
     if (zipBuffer) {
       const targetPath = path.join(SEEDERS_DIR, targetDir);
+
+      // Wipe the target dir before extracting. extractAllTo overwrites files
+      // present in the zip but does NOT delete files that existed locally and
+      // were removed in the new release. Without this, deleted seeders (e.g.
+      // moving maritime from private to community) persist on the volume
+      // forever and run as duplicates alongside the canonical copy.
+      if (fs.existsSync(targetPath)) {
+        console.log(`[Downloader] Wiping stale ${targetPath} before extracting fresh release...`);
+        fs.rmSync(targetPath, { recursive: true, force: true });
+      }
+      fs.mkdirSync(targetPath, { recursive: true });
+
       console.log(`[Downloader] Extracting ${owner}/${repo} to ${targetPath}...`);
-      
+
       try {
         const zip = new AdmZip(zipBuffer);
-        zip.extractAllTo(targetPath, true); // true = overwrite
+        zip.extractAllTo(targetPath, true);
         console.log(`[Downloader] Successfully extracted ${owner}/${repo}`);
         extractedSomething = true;
       } catch (err) {
