@@ -1,6 +1,7 @@
 import type { WebSocket } from 'ws';
 import { getLiveSnapshot } from './redis';
 import { getRegisteredPluginIds } from './scheduler';
+import { canonicalSeederFor, SEEDER_ALIASES } from './seeder-aliases';
 import { verifyEngineToken } from './jwt-auth';
 
 export type WebSocketAuthMessage = {
@@ -141,13 +142,20 @@ export function handleConnection(connection: WebSocket, request: any) {
 
       if (data.action === 'subscribe' && data.pluginId) {
         subscriptions.get(connection)?.add(data.pluginId);
-        
-        const latestSnapshot = await getLiveSnapshot(data.pluginId);
+        // Push the most recent cached snapshot to the client immediately
+        // upon subscribing. Look up the snapshot under the seeder's own
+        // name even if the subscriber asked under a UI-plugin alias, then
+        // fall back to the raw id if the alias-resolved lookup missed.
+        const seederName = canonicalSeederFor(data.pluginId);
+        let latestSnapshot = await getLiveSnapshot(seederName);
+        if (!latestSnapshot && seederName !== data.pluginId) {
+          latestSnapshot = await getLiveSnapshot(data.pluginId);
+        }
         if (latestSnapshot && connections.has(connection)) {
           connection.send(JSON.stringify({
             type: 'data',
             pluginId: data.pluginId,
-            payload: latestSnapshot
+            payload: latestSnapshot,
           }));
         }
       }
@@ -169,10 +177,21 @@ export function handleConnection(connection: WebSocket, request: any) {
 }
 
 export function broadcastPluginData(pluginId: string, payload: any) {
-  const message = JSON.stringify({ type: 'data', pluginId, payload });
+  // Fan out under every id a subscriber could be using: the seeder's
+  // canonical name plus any UI-plugin aliases registered above.
+  const ids = [pluginId, ...(SEEDER_ALIASES[pluginId] ?? [])];
+
   for (const connection of connections) {
-    if (subscriptions.get(connection)?.has(pluginId)) {
-      connection.send(message);
+    const subs = subscriptions.get(connection);
+    if (!subs) continue;
+    for (const id of ids) {
+      if (subs.has(id)) {
+        // Send the message under the id the *subscriber* asked for,
+        // so plugin-side `mapWebsocketPayload` sees a `pluginId` that
+        // matches the plugin's own configured id.
+        connection.send(JSON.stringify({ type: 'data', pluginId: id, payload }));
+        break; // one subscriber ≠ multiple deliveries of the same payload
+      }
     }
   }
 }

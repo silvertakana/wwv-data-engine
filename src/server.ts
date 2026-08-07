@@ -129,9 +129,29 @@ fastify.get('/api/seeders/active', async () => {
 });
 
 import { getLiveSnapshot } from './redis';
+import { canonicalSeederFor } from './seeder-aliases';
 
 async function handleSnapshotRequest(id: string, reply: any) {
-  const snapshot = await getLiveSnapshot(toKebabCase(id));
+  // Resolve UI-plugin aliases to the canonical seeder name. Plugins ask
+  // under their own id (e.g. "conflict-zones") but seeders may be running
+  // under a different declared name (e.g. "conflict-events"). Without
+  // this, every snapshot request from an alias-using plugin 404s even
+  // when the seeder is alive, same family of bug websocket.ts fixes on
+  // the WS subscribe path.
+  const seederName = canonicalSeederFor(id);
+
+  // Try the alias-resolved name first, then kebab-case normalization of
+  // the raw id (e.g. /api/civilUnrest when the seeder name is
+  // "civil-unrest"), then the raw id itself. First hit wins; each
+  // lookup is a cheap Redis GET on a rate-limited route.
+  const candidates = [seederName, toKebabCase(id)];
+  if (!candidates.includes(id)) candidates.push(id);
+
+  let snapshot: any = null;
+  for (const candidate of candidates) {
+    snapshot = await getLiveSnapshot(candidate);
+    if (snapshot) break;
+  }
 
   if (!snapshot) {
     return reply.status(404).send({ error: 'Snapshot not found or seeder not running' });
