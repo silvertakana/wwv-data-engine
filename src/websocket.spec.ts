@@ -4,7 +4,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import { handleConnection } from './websocket';
 import { checkJwksReachable } from './startup-checks';
 import WebSocket from 'ws';
-// @ts-ignore
+// @ts-expect-error - jose types require module resolution settings not used here
 import * as jose from 'jose';
 
 vi.mock('./redis', () => ({
@@ -19,7 +19,7 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
   let app: any;
   let url: string;
   let privateKey: any;
-  let kid = 'test-key-1';
+  const kid = 'test-key-1';
   let originalJwksUrl: string | undefined;
 
   beforeAll(async () => {
@@ -167,7 +167,7 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
     const token = await createToken({ sub: 'tenant-1' });
     return new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(url, { headers: { Origin: 'https://app.worldwideview.dev' } });
-      let authSentCount = 0;
+      const authSentCount = 0;
       ws.on('open', () => {
         ws.send(JSON.stringify({ type: 'auth', v: 1, token }));
       });
@@ -307,7 +307,7 @@ describe('Auth race condition', () => {
   let app: any;
   let url: string;
   let privateKey: any;
-  let kid = 'race-key-1';
+  const kid = 'race-key-1';
 
   beforeAll(async () => {
     const { publicKey, privateKey: priv } = await jose.generateKeyPair('EdDSA', { extractable: true });

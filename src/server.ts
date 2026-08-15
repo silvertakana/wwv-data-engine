@@ -64,7 +64,6 @@ fastify.register(fastifyCors, {
 fastify.register(fastifyWebsocket);
 
 fastify.register(async function (fastify) {
-  // @ts-ignore - RouteShorthandOptions augmentation missing for websocket in strict mode
   fastify.get('/stream', {
     websocket: true,
     // 60 WS upgrades per 10 seconds per IP — handles reconnect bursts after restart

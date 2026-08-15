@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import AdmZip from 'adm-zip';
+import { execSync } from 'child_process';
 
 const GITHUB_PAT = process.env.GITHUB_PAT;
 const SEEDERS_DIR = process.env.SEEDERS_DIR || path.resolve(process.cwd(), 'seeders');
@@ -114,9 +115,7 @@ export async function run() {
     const workspaceYamlContent = `packages:\n  - "community/*"\n  - "private/*"\n`;
     fs.writeFileSync(workspaceYamlPath, workspaceYamlContent);
     console.log(`[Downloader] Generated pnpm-workspace.yaml at ${workspaceYamlPath}`);
-
     // 3. Install all dependencies across the workspace
-    const { execSync } = require('child_process');
     console.log(`[Downloader] Installing production workspace dependencies...`);
     try {
       execSync('pnpm install --prod', { cwd: SEEDERS_DIR, stdio: 'inherit' });
