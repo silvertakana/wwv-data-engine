@@ -10,10 +10,10 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     rules: {
-      // Pre-existing debt: scattered `any` usages. Promote to error after cleanup.
-      "@typescript-eslint/no-explicit-any": "warn",
-      // Unused vars warn (args starting with `_` are intentionally unused). Promote after cleanup.
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      // Strict: no explicit `any` — replace with precise types or narrowed `unknown`. Never suppress.
+      "@typescript-eslint/no-explicit-any": "error",
+      // Strict: unused vars are dead code; params prefixed with `_` are allowed for interface contracts.
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
       // Server process: console logging is intentional.
       "no-console": "off",
     },
