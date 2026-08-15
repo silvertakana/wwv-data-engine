@@ -1,11 +1,20 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import { handleConnection } from './websocket';
 import { checkJwksReachable } from './startup-checks';
 import WebSocket from 'ws';
 // @ts-expect-error - jose types require module resolution settings not used here
 import * as jose from 'jose';
+
+type EdDsaPrivateKey = Awaited<ReturnType<typeof jose.generateKeyPair>>['privateKey'];
+
+interface CreateTokenOptions {
+  issuer?: string;
+  audience?: string;
+  exp?: string | number;
+  nbf?: string | number;
+}
 
 vi.mock('./redis', () => ({
   getLiveSnapshot: vi.fn().mockResolvedValue({ mocked: true })
@@ -16,9 +25,9 @@ vi.mock('./scheduler', () => ({
 }));
 
 describe('WebSocket Origin Validation & Auth Gating', () => {
-  let app: any;
+  let app: FastifyInstance;
   let url: string;
-  let privateKey: any;
+  let privateKey: EdDsaPrivateKey;
   const kid = 'test-key-1';
   let originalJwksUrl: string | undefined;
 
@@ -33,28 +42,32 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
     app.register(fastifyWebsocket);
     app.get('/jwks', async () => ({ keys: [publicJwk] }));
 
-    app.register(async function (fastify: any) {
+    app.register(async function (fastify) {
       fastify.get('/stream', {
         websocket: true,
-        preValidation: (request: any, reply: any, done: any) => {
+        preValidation: (request, reply, done) => {
           const allowedOrigins = process.env.ALLOWED_ORIGINS
             ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
             : ['*'];
 
           const origin = request.headers.origin || '';
           if (!allowedOrigins.includes('*') && !allowedOrigins.includes(origin)) {
-            return reply.code(403).send('Forbidden Origin');
+            reply.code(403).send('Forbidden Origin');
+            return;
           }
 
           done();
         }
-      }, (connection: any, req: any) => {
+      }, (connection, req) => {
         handleConnection(connection, req);
       });
     });
 
     await app.listen({ port: 0, host: '127.0.0.1' });
     const address = app.server.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('Failed to resolve test server address');
+    }
     url = `ws://127.0.0.1:${address.port}/stream`;
 
     // jwt-auth.ts builds its JWKS resolver lazily from JWKS_URL on first verify.
@@ -72,7 +85,7 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
     }
   });
 
-  async function createToken(payload: any = {}, options: any = {}) {
+  async function createToken(payload: Record<string, unknown> = {}, options: CreateTokenOptions = {}) {
     const jwt = new jose.SignJWT(payload)
       .setProtectedHeader({ alg: 'EdDSA', kid })
       .setIssuedAt()
@@ -167,7 +180,6 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
     const token = await createToken({ sub: 'tenant-1' });
     return new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(url, { headers: { Origin: 'https://app.worldwideview.dev' } });
-      const authSentCount = 0;
       ws.on('open', () => {
         ws.send(JSON.stringify({ type: 'auth', v: 1, token }));
       });
@@ -188,7 +200,7 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
       });
     });
   });
-  
+
   it('sockets forcefully disconnect when validated JWT expires', async () => {
     // Generate token that expires in 1s (fastify-jwt will enforce this)
     // Wait, fastify-jwt clockTolerance is 60s, so it won't reject unless it's 60s old
@@ -304,9 +316,9 @@ describe('WebSocket Origin Validation & Auth Gating', () => {
 });
 
 describe('Auth race condition', () => {
-  let app: any;
+  let app: FastifyInstance;
   let url: string;
-  let privateKey: any;
+  let privateKey: EdDsaPrivateKey;
   const kid = 'race-key-1';
 
   beforeAll(async () => {
@@ -318,14 +330,17 @@ describe('Auth race condition', () => {
     app.register(fastifyWebsocket);
     app.get('/jwks', async () => ({ keys: [publicJwk] }));
 
-    app.register(async function (fastify: any) {
-      fastify.get('/stream', { websocket: true }, (connection: any, req: any) => {
+    app.register(async function (fastify) {
+      fastify.get('/stream', { websocket: true }, (connection, req) => {
         handleConnection(connection, req);
       });
     });
 
     await app.listen({ port: 0, host: '127.0.0.1' });
     const address = app.server.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('Failed to resolve test server address');
+    }
     url = `ws://127.0.0.1:${address.port}/stream`;
 
     process.env.JWKS_URL = `http://127.0.0.1:${address.port}/jwks`;
@@ -372,21 +387,24 @@ describe('Auth race condition', () => {
 });
 
 describe('Auth enforcement — subscribe-first and timeout paths', () => {
-  let app: any;
+  let app: FastifyInstance;
   let url: string;
 
   beforeAll(async () => {
     app = Fastify();
     app.register(fastifyWebsocket);
 
-    app.register(async function (fastify: any) {
-      fastify.get('/stream', { websocket: true }, (connection: any, req: any) => {
+    app.register(async function (fastify) {
+      fastify.get('/stream', { websocket: true }, (connection, req) => {
         handleConnection(connection, req);
       });
     });
 
     await app.listen({ port: 0, host: '127.0.0.1' });
     const address = app.server.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('Failed to resolve test server address');
+    }
     url = `ws://127.0.0.1:${address.port}/stream`;
     process.env.ALLOWED_ORIGINS = '*';
   });

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import Fastify from 'fastify';
+import { describe, it, beforeAll, afterAll, vi } from 'vitest';
+import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import WebSocket from 'ws';
 
@@ -22,7 +22,7 @@ import { handleConnection } from './websocket';
 import { verifyEngineToken } from './jwt-auth';
 
 describe('Auth enforcement — valid JWT sends welcome (mocked verifyEngineToken)', () => {
-  let app: any;
+  let app: FastifyInstance;
   let url: string;
   const mockVerify = verifyEngineToken as ReturnType<typeof vi.fn>;
 
@@ -35,14 +35,17 @@ describe('Auth enforcement — valid JWT sends welcome (mocked verifyEngineToken
     app = Fastify();
     app.register(fastifyWebsocket);
 
-    app.register(async function (fastify: any) {
-      fastify.get('/stream', { websocket: true }, (connection: any, req: any) => {
+    app.register(async function (fastify) {
+      fastify.get('/stream', { websocket: true }, (connection, req) => {
         handleConnection(connection, req);
       });
     });
 
     await app.listen({ port: 0, host: '127.0.0.1' });
     const address = app.server.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('Failed to resolve test server address');
+    }
     url = `ws://127.0.0.1:${address.port}/stream`;
     process.env.ALLOWED_ORIGINS = '*';
   });

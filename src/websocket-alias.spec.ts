@@ -7,7 +7,7 @@ vi.hoisted(() => {
   process.env.WWV_SKIP_WS_AUTH = 'true';
 });
 
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import WebSocket from 'ws';
 
@@ -37,21 +37,24 @@ import { getLiveSnapshot } from './redis';
 const mockGetLiveSnapshot = getLiveSnapshot as ReturnType<typeof vi.fn>;
 
 describe('WebSocket seeder-alias delivery', () => {
-  let app: any;
+  let app: FastifyInstance;
   let url: string;
 
   beforeAll(async () => {
     app = Fastify();
     app.register(fastifyWebsocket);
 
-    app.register(async function (fastify: any) {
-      fastify.get('/stream', { websocket: true }, (connection: any, req: any) => {
+    app.register(async function (fastify) {
+      fastify.get('/stream', { websocket: true }, (connection, req) => {
         handleConnection(connection, req);
       });
     });
 
     await app.listen({ port: 0, host: '127.0.0.1' });
     const address = app.server.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('Failed to resolve test server address');
+    }
     url = `ws://127.0.0.1:${address.port}/stream`;
     process.env.ALLOWED_ORIGINS = '*';
   });

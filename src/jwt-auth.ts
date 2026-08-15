@@ -69,12 +69,16 @@ export async function verifyEngineToken(token: string): Promise<EngineTokenClaim
       throw new Error('Token missing required claims (sub, exp)');
     }
     return payload as EngineTokenClaims;
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Reset the cached resolver on network failures so the next connection
     // attempt re-initialises it — allows recovery when JWKS comes back up
     // without requiring an engine restart.
-    const msg: string = err?.message ?? '';
-    if (msg.includes('fetch') || err?.code === 'ECONNREFUSED' || err?.code === 'ENOTFOUND') {
+    const msg = err instanceof Error ? err.message : String(err);
+    const code =
+      typeof err === 'object' && err !== null && 'code' in err
+        ? String((err as { code?: unknown }).code)
+        : '';
+    if (msg.includes('fetch') || code === 'ECONNREFUSED' || code === 'ENOTFOUND') {
       console.error('[jwt] JWKS fetch failed — resetting resolver for retry:', msg);
       keyResolver = null;
     }

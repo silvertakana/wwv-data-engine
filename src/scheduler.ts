@@ -70,8 +70,8 @@ export function startScheduler() {
           }
           
           seederStatus[seeder.id] = Date.now();
-        } catch (error: any) {
-          console.error(`[Scheduler] Seeder ${seeder.id} failed:`, error.message);
+        } catch (error: unknown) {
+          console.error(`[Scheduler] Seeder ${seeder.id} failed:`, error instanceof Error ? error.message : String(error));
         }
       };
       
@@ -93,8 +93,8 @@ export function startScheduler() {
           // Many legacy plugins handle their own setLiveSnapshot internally
           await seeder.fn!({ redis });
           seederStatus[seeder.id] = Date.now();
-        } catch (error: any) {
-          console.error(`[Scheduler] Cron Seeder ${seeder.id} failed:`, error.message);
+        } catch (error: unknown) {
+          console.error(`[Scheduler] Cron Seeder ${seeder.id} failed:`, error instanceof Error ? error.message : String(error));
         }
       };
 

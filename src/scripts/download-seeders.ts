@@ -10,6 +10,16 @@ const REPOS = [
   { owner: 'silvertakana', repo: 'wwv-seeders-private', targetDir: 'private', private: true }
 ];
 
+interface GitHubReleaseAsset {
+  name: string;
+  url: string;
+}
+
+interface GitHubRelease {
+  tag_name?: string;
+  assets?: GitHubReleaseAsset[];
+}
+
 async function downloadRelease(owner: string, repo: string, isPrivate: boolean) {
   console.log(`[Downloader] Checking latest release for ${owner}/${repo}...`);
   
@@ -34,8 +44,8 @@ async function downloadRelease(owner: string, repo: string, isPrivate: boolean) 
       throw new Error(`GitHub API returned ${res.status} ${res.statusText}`);
     }
 
-    const release = await res.json();
-    const asset = release.assets?.find((a: any) => a.name === 'seeders.zip');
+    const release = (await res.json()) as GitHubRelease;
+    const asset = release.assets?.find((a) => a.name === 'seeders.zip');
 
     if (!asset) {
       console.warn(`[Downloader] No seeders.zip found in the latest release of ${owner}/${repo}`);
