@@ -39,8 +39,9 @@ The engine starts at `http://localhost:5000`:
 A seeder is a self-contained package the engine **auto-discovers** at startup.
 You do not register it manually — the loader (`src/seeder-loader.ts`) scans
 `SEEDERS_DIR` for any folder containing `dist/index.mjs` and imports its
-**default export**. The seeder's `id` is taken from the **folder name**, not
-from the `name` field, so the directory name is what the frontend subscribes to.
+**default export**. The seeder's canonical `id` is its self-declared `name`
+field, so that name is what the frontend subscribes to. The folder name is
+organisational only and is used as a fallback if the seeder exports no `name`.
 
 ### The module shape
 
@@ -111,14 +112,14 @@ Runs the engine + Redis. Data persists in Docker volumes.
 |---|---|---|---|
 | `REDIS_URL` | No | `redis://localhost:6379` | Redis connection string |
 | `PORT` | No | `5000` | Server port |
-| `OTX_API_KEY` | No | — | AlienVault OTX key for cyber attacks (free tier available) |
-| `DATABASE_URL` | No | — | Supabase/Postgres URL for historical sync (optional) |
+| `OTX_API_KEY` | No | — | AlienVault OTX key for the Cyber Attacks **seeder** (free tier available) — not read by the engine core |
+| `DATABASE_URL` | No | — | Postgres URL for seeders that sync history (optional) — consumed by individual seeders, not the engine |
 
 ## Contributing
 
 1. Fork this repo
 2. Create a branch: `git checkout -b feat/my-seeder`
-3. Add your seeder to `src/seeders/`
+3. Add your seeder to the community seeders repo (`local-seeders/community/`); the engine auto-discovers it from the root `seeders/` directory at runtime — there is no `src/seeders/`
 4. Add a corresponding route to `src/routes/` (if needed)
 5. Test locally with `pnpm dev`
 6. Open a PR
