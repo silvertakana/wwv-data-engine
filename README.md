@@ -29,7 +29,7 @@ cp .env.local.example .env.local   # edit if needed
 pnpm dev
 ```
 
-The engine starts at `http://localhost:5000`:
+The engine starts at `http://localhost:5000` (the `PORT` default; the ecosystem dev stack maps it to a host port via `ENGINE_PORT`, which also defaults to `5000`):
 - `GET /health` — Engine status and seeder health
 - `GET /manifest` — List of available seeders
 - `WS /stream` — WebSocket endpoint for real-time data
@@ -111,7 +111,7 @@ Runs the engine + Redis. Data persists in Docker volumes.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `REDIS_URL` | No | `redis://localhost:6379` | Redis connection string |
-| `PORT` | No | `5000` | Server port |
+| `PORT` | No | `5000` | Server port (the ecosystem dev stack overrides the host mapping via `ENGINE_PORT`, default `5000`) |
 | `OTX_API_KEY` | No | — | AlienVault OTX key for the Cyber Attacks **seeder** (free tier available) — not read by the engine core |
 | `DATABASE_URL` | No | — | Postgres URL for seeders that sync history (optional) — consumed by individual seeders, not the engine |
 
