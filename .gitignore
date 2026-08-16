@@ -21,3 +21,9 @@ local-scripts/
 # claude code (personal)
 /.claude/settings.local.json
 graphify-out/
+
+# Dev-only files
+Dockerfile.dev
+
+# Coverage reports
+coverage/
