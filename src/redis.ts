@@ -42,7 +42,7 @@ const SNAPSHOT_THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
  * Convenience method to write a JSON payload to Redis with an expiration.
  * Writes are throttled to save Redis requests, but websockets are always broadcasted.
  */
-export async function setLiveSnapshot(source: string, payload: any, ttlSeconds: number) {
+export async function setLiveSnapshot(source: string, payload: unknown, ttlSeconds: number) {
   try {
     // 1. ALWAYS broadcast newly updated entities to any active WebSocket subscribers
     // The data pipeline relies on this for high-frequency HUD updates.
@@ -61,7 +61,7 @@ export async function setLiveSnapshot(source: string, payload: any, ttlSeconds: 
     
     // Compress JSON strings to drastically reduce Upstash payload size
     const compressed = zlib.gzipSync(Buffer.from(jsonStr, 'utf-8'));
-    await redis.set(key, compressed as any, 'EX', ttlSeconds);
+    await redis.set(key, compressed, 'EX', ttlSeconds);
     
     // Also save a metadata key so healthcheck can verify
     await redis.set(`meta:${source}:last_run`, Date.now().toString(), 'EX', ttlSeconds * 2);

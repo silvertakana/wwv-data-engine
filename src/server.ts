@@ -11,7 +11,7 @@ if (process.env.SENTRY_DSN) {
   });
 }
 
-import Fastify from 'fastify';
+import Fastify, { type FastifyError, type FastifyReply } from 'fastify';
 import { startScheduler } from './scheduler';
 import { seederStatus } from './scheduler';
 import { discoverSeeders, toKebabCase } from './seeder-loader';
@@ -22,7 +22,7 @@ export const fastify = Fastify({
   logger: false // Keep it clean for the console
 });
 
-fastify.setErrorHandler(function (error: any, request, reply) {
+fastify.setErrorHandler(function (error: FastifyError, request, reply) {
   if (process.env.SENTRY_DSN) {
     Sentry.captureException(error, {
       extra: {
@@ -45,8 +45,8 @@ import { handleConnection } from './websocket';
 // engine restart easily exceed a tight global limit and flood the error log with 429s.
 fastify.register(fastifyRateLimit, {
   global: false,
-  keyGenerator: (request: any) =>
-    request.headers['x-real-ip'] || request.headers['x-forwarded-for'] || request.ip,
+  keyGenerator: (request) =>
+    String(request.headers['x-real-ip'] || request.headers['x-forwarded-for'] || request.ip),
 });
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
@@ -64,36 +64,37 @@ fastify.register(fastifyCors, {
 fastify.register(fastifyWebsocket);
 
 fastify.register(async function (fastify) {
-  // @ts-ignore - RouteShorthandOptions augmentation missing for websocket in strict mode
   fastify.get('/stream', {
     websocket: true,
     // 60 WS upgrades per 10 seconds per IP — handles reconnect bursts after restart
     // without allowing genuine flood attacks.
     config: { rateLimit: { max: 60, timeWindow: '10 seconds' } },
-    preValidation: (request: any, reply: any, done: any) => {
+    preValidation: (request, reply, done) => {
       const allowedOrigins = process.env.ALLOWED_ORIGINS
         ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
         : ['*'];
 
       const origin = request.headers.origin || '';
       if (!allowedOrigins.includes('*') && !allowedOrigins.includes(origin)) {
-        return reply.code(403).send('Forbidden Origin');
+        reply.code(403).send('Forbidden Origin');
+        return;
       }
 
       if (process.env.NODE_ENV === 'production' && request.headers['x-forwarded-proto'] !== 'https') {
-        return reply.code(403).send('HTTPS Required');
+        reply.code(403).send('HTTPS Required');
+        return;
       }
 
       done();
     }
-  }, (connection: any, req: any) => {
+  }, (connection, req) => {
     handleConnection(connection, req);
   });
 });
 
 const PORT = parseInt(process.env.PORT || '5000', 10);
 
-fastify.get('/health', async (request, reply) => {
+fastify.get('/health', async (_request, _reply) => {
   return {
     status: 'ok',
     engine: 'wwv-data-engine',
@@ -131,7 +132,7 @@ fastify.get('/api/seeders/active', async () => {
 import { getLiveSnapshot } from './redis';
 import { canonicalSeederFor } from './seeder-aliases';
 
-async function handleSnapshotRequest(id: string, reply: any) {
+async function handleSnapshotRequest(id: string, reply: FastifyReply) {
   // Resolve UI-plugin aliases to the canonical seeder name. Plugins ask
   // under their own id (e.g. "conflict-zones") but seeders may be running
   // under a different declared name (e.g. "conflict-events"). Without
@@ -147,7 +148,7 @@ async function handleSnapshotRequest(id: string, reply: any) {
   const candidates = [seederName, toKebabCase(id)];
   if (!candidates.includes(id)) candidates.push(id);
 
-  let snapshot: any = null;
+  let snapshot: unknown = null;
   for (const candidate of candidates) {
     snapshot = await getLiveSnapshot(candidate);
     if (snapshot) break;
@@ -160,7 +161,7 @@ async function handleSnapshotRequest(id: string, reply: any) {
   // Some seeders wrap their output in { items: ... }, others don't.
   // To ensure the frontend always gets an object with `items` if it expects one,
   // we can check if `snapshot` already has `items`.
-  if (typeof snapshot === 'object' && !('items' in snapshot)) {
+  if (typeof snapshot === 'object' && snapshot !== null && !('items' in snapshot)) {
     return { items: snapshot };
   }
 
@@ -206,7 +207,7 @@ async function start() {
       try {
         await checkJwksReachable(jwksUrl);
         console.log('[Server] JWKS reachable at', jwksUrl);
-      } catch (e) {
+      } catch {
         console.error('[Server] FATAL: JWKS unreachable at startup:', jwksUrl);
         process.exit(1);
       }

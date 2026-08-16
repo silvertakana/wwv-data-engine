@@ -43,8 +43,8 @@ export interface SeederModule {
   name: string;
   interval?: number;
   cron?: string;
-  fetch?: (ctx: SeederContext) => Promise<any>;
-  fn?: (ctx: SeederContext) => Promise<any> | void;
+  fetch?: (ctx: SeederContext) => Promise<unknown>;
+  fn?: (ctx: SeederContext) => Promise<unknown> | void;
   init?: (ctx: SeederContext) => void;
 }
 

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import AdmZip from 'adm-zip';
+import { execSync } from 'child_process';
 
 const GITHUB_PAT = process.env.GITHUB_PAT;
 const SEEDERS_DIR = process.env.SEEDERS_DIR || path.resolve(process.cwd(), 'seeders');
@@ -8,6 +9,16 @@ const REPOS = [
   { owner: 'silvertakana', repo: 'wwv-seeders', targetDir: 'community' },
   { owner: 'silvertakana', repo: 'wwv-seeders-private', targetDir: 'private', private: true }
 ];
+
+interface GitHubReleaseAsset {
+  name: string;
+  url: string;
+}
+
+interface GitHubRelease {
+  tag_name?: string;
+  assets?: GitHubReleaseAsset[];
+}
 
 async function downloadRelease(owner: string, repo: string, isPrivate: boolean) {
   console.log(`[Downloader] Checking latest release for ${owner}/${repo}...`);
@@ -33,8 +44,8 @@ async function downloadRelease(owner: string, repo: string, isPrivate: boolean) 
       throw new Error(`GitHub API returned ${res.status} ${res.statusText}`);
     }
 
-    const release = await res.json();
-    const asset = release.assets?.find((a: any) => a.name === 'seeders.zip');
+    const release = (await res.json()) as GitHubRelease;
+    const asset = release.assets?.find((a) => a.name === 'seeders.zip');
 
     if (!asset) {
       console.warn(`[Downloader] No seeders.zip found in the latest release of ${owner}/${repo}`);
@@ -114,9 +125,7 @@ export async function run() {
     const workspaceYamlContent = `packages:\n  - "community/*"\n  - "private/*"\n`;
     fs.writeFileSync(workspaceYamlPath, workspaceYamlContent);
     console.log(`[Downloader] Generated pnpm-workspace.yaml at ${workspaceYamlPath}`);
-
     // 3. Install all dependencies across the workspace
-    const { execSync } = require('child_process');
     console.log(`[Downloader] Installing production workspace dependencies...`);
     try {
       execSync('pnpm install --prod', { cwd: SEEDERS_DIR, stdio: 'inherit' });

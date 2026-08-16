@@ -7,7 +7,7 @@ vi.hoisted(() => {
   process.env.WWV_SKIP_WS_AUTH = 'true';
 });
 
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import WebSocket from 'ws';
 
@@ -26,7 +26,7 @@ vi.mock('./scheduler', () => ({
 import { handleConnection, WS_CLOSE_INVALID_PLUGIN_ID, WS_CLOSE_SUBSCRIPTION_LIMIT } from './websocket';
 
 describe('Subscription validation — pluginId format and per-connection cap', () => {
-  let app: any;
+  let app: FastifyInstance;
   let url: string;
   const MAX_SUBSCRIPTIONS_PER_CONNECTION = 50;
 
@@ -34,14 +34,17 @@ describe('Subscription validation — pluginId format and per-connection cap', (
     app = Fastify();
     app.register(fastifyWebsocket);
 
-    app.register(async function (fastify: any) {
-      fastify.get('/stream', { websocket: true }, (connection: any, req: any) => {
+    app.register(async function (fastify: FastifyInstance) {
+      fastify.get('/stream', { websocket: true }, (connection: WebSocket, req: FastifyRequest) => {
         handleConnection(connection, req);
       });
     });
 
     await app.listen({ port: 0, host: '127.0.0.1' });
     const address = app.server.address();
+    if (address === null || typeof address === 'string') {
+      throw new Error('Failed to resolve test server address');
+    }
     url = `ws://127.0.0.1:${address.port}/stream`;
     process.env.ALLOWED_ORIGINS = '*';
   });

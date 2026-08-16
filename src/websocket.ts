@@ -40,7 +40,7 @@ export function isValidPluginId(pluginId: unknown): pluginId is string {
 // Intentionally permitted in production while app-side auth is not yet implemented.
 const SKIP_WS_AUTH = process.env.WWV_SKIP_WS_AUTH === 'true';
 
-export function handleConnection(connection: WebSocket, request: any) {
+export function handleConnection(connection: WebSocket, _request: unknown) {
   let isAuthenticated = SKIP_WS_AUTH;
   // authPending is set synchronously before the async verifyEngineToken call.
   // A second message arriving while verification is in-flight sees this flag
@@ -124,9 +124,9 @@ export function handleConnection(connection: WebSocket, request: any) {
           engine: 'wwv-data-engine',
           plugins: getRegisteredPluginIds(),
         }));
-      } catch (err: any) {
+      } catch (err: unknown) {
         // Important: err might contain sensitive data in stack trace, do not log full error
-        console.error('[WS] Auth failed:', err.message);
+        console.error('[WS] Auth failed:', err instanceof Error ? err.message : String(err));
         connection.close(4003, 'Auth failed');
       }
       return;
@@ -151,8 +151,8 @@ export function handleConnection(connection: WebSocket, request: any) {
             jwtExpTimeout = setTimeout(() => {
               connection.close(4001, 'Token expired');
             }, Math.max(timeUntilExp, 0));
-          } catch (err: any) {
-            console.warn(`[WS] Auth verification failed: ${err.message}`);
+          } catch (err: unknown) {
+            console.warn(`[WS] Auth verification failed: ${err instanceof Error ? err.message : String(err)}`);
           }
           return;
         }
@@ -215,7 +215,7 @@ export function handleConnection(connection: WebSocket, request: any) {
   });
 }
 
-export function broadcastPluginData(pluginId: string, payload: any) {
+export function broadcastPluginData(pluginId: string, payload: unknown) {
   // Fan out under every id a subscriber could be using: the seeder's
   // canonical name plus any UI-plugin aliases registered above.
   const ids = [pluginId, ...(SEEDER_ALIASES[pluginId] ?? [])];
@@ -235,4 +235,4 @@ export function broadcastPluginData(pluginId: string, payload: any) {
   }
 }
 
-(globalThis as any).broadcastPluginData = broadcastPluginData;
+Object.assign(globalThis, { broadcastPluginData });
