@@ -10,6 +10,7 @@
  *   2. Frontend HTTP probe port in worldwideview/src/core/data/engineManifest.ts
  *   3. Frontend WebSocket probe port in worldwideview/src/core/data/resolveEngineUrl.ts
  *   4. README accuracy — must not advertise 5001 as the default port
+ *   5. .env.local.example accuracy — must not advertise 5001 as the default port
  *
  * Cross-repo assertions (2 & 3) are skipped automatically when the sibling
  * worldwideview directory is not present (e.g., CI runners that only check out
@@ -197,6 +198,29 @@ describe('README port documentation', () => {
       driftLines.map(({ lineNo, line }) => `  Line ${lineNo}: ${line.trim()}`).join('\n') +
       '\n\nThe actual default in src/server.ts is 5000. ' +
       'Update README.md to match (change 5001 → 5000 in the prose and the ENV table).'
+    ).toHaveLength(0);
+  });
+
+  it('does not advertise 5001 as the default engine port', () => {
+    const envExample = readEngineFile('.env.local.example');
+
+    // Same drift rule as the README check: flag any line presenting 5001 as
+    // the default port. For .env.local.example that is the PORT row (both the
+    // "# Server port (default: 5001)" comment and the "PORT=5001" assignment).
+    const lines = envExample.split('\n');
+    const driftLines = lines
+      .map((line, idx) => ({ line, lineNo: idx + 1 }))
+      .filter(({ line }) =>
+        /5001/.test(line) &&
+        /default|^PORT\s*=/i.test(line)
+      );
+
+    expect(
+      driftLines,
+      `.env.local.example mentions 5001 as the default port on the following lines:\n` +
+      driftLines.map(({ lineNo, line }) => `  Line ${lineNo}: ${line.trim()}`).join('\n') +
+      '\n\nThe actual default in src/server.ts is 5000. ' +
+      'Update .env.local.example to match (change 5001 → 5000 in the PORT row).'
     ).toHaveLength(0);
   });
 });
