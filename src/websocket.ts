@@ -14,6 +14,28 @@ export type WebSocketAuthMessage = {
 const connections = new Set<WebSocket>();
 const subscriptions = new Map<WebSocket, Set<string>>();
 
+// Subscribe-path validation limits. pluginIds are seeder/plugin ids in
+// kebab-case; anything else (path traversal, camelCase dir names, oversized
+// blobs) is a protocol violation and closes the connection.
+const PLUGIN_ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const PLUGIN_ID_MAX_LENGTH = 64;
+const MAX_SUBSCRIPTIONS_PER_CONNECTION = 50;
+
+// Application close codes used on the subscribe path (4000-4999 range):
+// 4400 - invalid pluginId (missing, malformed, or too long)
+// 4401 - per-connection subscription cap exceeded
+export const WS_CLOSE_INVALID_PLUGIN_ID = 4400;
+export const WS_CLOSE_SUBSCRIPTION_LIMIT = 4401;
+
+export function isValidPluginId(pluginId: unknown): pluginId is string {
+  return (
+    typeof pluginId === 'string' &&
+    pluginId.length > 0 &&
+    pluginId.length <= PLUGIN_ID_MAX_LENGTH &&
+    PLUGIN_ID_PATTERN.test(pluginId)
+  );
+}
+
 // Set WWV_SKIP_WS_AUTH=true to allow unauthenticated /stream connections.
 // Intentionally permitted in production while app-side auth is not yet implemented.
 const SKIP_WS_AUTH = process.env.WWV_SKIP_WS_AUTH === 'true';
@@ -140,8 +162,20 @@ export function handleConnection(connection: WebSocket, request: any) {
         return;
       }
 
-      if (data.action === 'subscribe' && data.pluginId) {
-        subscriptions.get(connection)?.add(data.pluginId);
+      if (data.action === 'subscribe') {
+        // Validate the pluginId shape before admitting it to the
+        // subscription set — reachable unauthenticated under
+        // WWV_SKIP_WS_AUTH=true, so it must not accept arbitrary input.
+        if (!isValidPluginId(data.pluginId)) {
+          connection.close(WS_CLOSE_INVALID_PLUGIN_ID, 'Invalid pluginId');
+          return;
+        }
+        const subs = subscriptions.get(connection);
+        if (subs && subs.size >= MAX_SUBSCRIPTIONS_PER_CONNECTION) {
+          connection.close(WS_CLOSE_SUBSCRIPTION_LIMIT, 'Subscription limit exceeded');
+          return;
+        }
+        subs?.add(data.pluginId);
         // Push the most recent cached snapshot to the client immediately
         // upon subscribing. Look up the snapshot under the seeder's own
         // name even if the subscriber asked under a UI-plugin alias, then
@@ -159,8 +193,13 @@ export function handleConnection(connection: WebSocket, request: any) {
           }));
         }
       }
-      if (data.action === 'unsubscribe' && data.pluginId) {
-        subscriptions.get(connection)?.delete(data.pluginId);
+      if (data.action === 'unsubscribe') {
+        // Unsubscribe cannot grow the subscription set, so an invalid id is
+        // a no-op rather than a close. Only valid ids can be present in the
+        // set in the first place (subscribe validates before adding).
+        if (isValidPluginId(data.pluginId)) {
+          subscriptions.get(connection)?.delete(data.pluginId);
+        }
       }
     } catch (e) {
       console.error('[WS] Invalid message error/fetch error', e);
