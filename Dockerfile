@@ -1,4 +1,4 @@
-FROM node:22-slim AS builder
+FROM node:26-slim AS builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN pnpm run build
 # Development dependencies are retained because pnpm prune --prod aggressively rebuilds the hoisted structure, deleting prebuilt C++ binaries for better-sqlite3 and Rust engines for Prisma.
 
 # Production Stage
-FROM node:22-slim
+FROM node:26-slim
 
 WORKDIR /app
 
