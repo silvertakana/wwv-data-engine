@@ -1,0 +1,38 @@
+# Marks issues and PRs as stale after 60 days of inactivity, then closes
+# after 14 more days. Exempts good-first-issue / help-wanted / P0-critical.
+name: Stale Bot
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily at 06:00 UTC
+  workflow_dispatch: # manual trigger
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v8
+        with:
+          stale-issue-message: >
+            This issue has been inactive for 60 days. If there is no further
+            activity in the next 14 days it will be closed automatically.
+          stale-pr-message: >
+            This PR has been inactive for 60 days. If there is no further
+            activity in the next 14 days it will be closed automatically.
+          close-issue-message: >
+            Closing due to inactivity. Feel free to re-open if the issue
+            is still relevant.
+          close-pr-message: >
+            Closing due to inactivity. Feel free to re-open if the PR
+            is still relevant.
+          days-before-stale: 60
+          days-before-close: 14
+          stale-issue-label: stale
+          stale-pr-label: stale
+          exempt-issue-labels: good first issue,help wanted,P0-critical
+          exempt-pr-labels: good first issue,help wanted,P0-critical
+          operations-per-run: 100
