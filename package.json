@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
-    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/rate-limit": "^11.2.0",
     "@fastify/websocket": "^11.2.0",
     "@sentry/node": "^10.48.0",
     "adm-zip": "^0.6.0",
