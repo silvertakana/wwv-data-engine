@@ -52,6 +52,6 @@ RUN mkdir -p /app/data
 ENV NODE_ENV=production
 
 
-EXPOSE 5001
+EXPOSE 5000
 
 CMD ["node", "dist/server.js"]
