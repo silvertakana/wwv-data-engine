@@ -11,11 +11,9 @@ if (process.env.SENTRY_DSN) {
   });
 }
 
-import Fastify, { type FastifyError, type FastifyReply } from 'fastify';
-import { startScheduler } from './scheduler';
-import { seederStatus } from './scheduler';
-import { discoverSeeders, toKebabCase } from './seeder-loader';
-import { registerSeeders } from './scheduler';
+import Fastify, { type FastifyError } from 'fastify';
+import { startScheduler, registerSeeders } from './scheduler';
+import { discoverSeeders } from './seeder-loader';
 
 // Boot Fastify
 export const fastify = Fastify({
@@ -94,14 +92,7 @@ fastify.register(async function (fastify) {
 
 const PORT = parseInt(process.env.PORT || '5000', 10);
 
-fastify.get('/health', async (_request, _reply) => {
-  return {
-    status: 'ok',
-    engine: 'wwv-data-engine',
-    timestamp: Date.now(),
-    seeders: seederStatus
-  };
-});
+import { routesPlugin } from './routes';
 
 import { getRegisteredPluginIds, getRegisteredSeederNames } from './scheduler';
 import { readFileSync } from 'fs';
@@ -129,60 +120,9 @@ fastify.get('/api/seeders/active', async () => {
   };
 });
 
-import { getLiveSnapshot } from './redis';
-import { canonicalSeederFor } from './seeder-aliases';
-
-async function handleSnapshotRequest(id: string, reply: FastifyReply) {
-  // Resolve UI-plugin aliases to the canonical seeder name. Plugins ask
-  // under their own id (e.g. "conflict-zones") but seeders may be running
-  // under a different declared name (e.g. "conflict-events"). Without
-  // this, every snapshot request from an alias-using plugin 404s even
-  // when the seeder is alive, same family of bug websocket.ts fixes on
-  // the WS subscribe path.
-  const seederName = canonicalSeederFor(id);
-
-  // Try the alias-resolved name first, then kebab-case normalization of
-  // the raw id (e.g. /api/civilUnrest when the seeder name is
-  // "civil-unrest"), then the raw id itself. First hit wins; each
-  // lookup is a cheap Redis GET on a rate-limited route.
-  const candidates = [seederName, toKebabCase(id)];
-  if (!candidates.includes(id)) candidates.push(id);
-
-  let snapshot: unknown = null;
-  for (const candidate of candidates) {
-    snapshot = await getLiveSnapshot(candidate);
-    if (snapshot) break;
-  }
-
-  if (!snapshot) {
-    return reply.status(404).send({ error: 'Snapshot not found or seeder not running' });
-  }
-
-  // Some seeders wrap their output in { items: ... }, others don't.
-  // To ensure the frontend always gets an object with `items` if it expects one,
-  // we can check if `snapshot` already has `items`.
-  if (typeof snapshot === 'object' && snapshot !== null && !('items' in snapshot)) {
-    return { items: snapshot };
-  }
-
-  return snapshot;
-}
-
-fastify.get('/api/:id', {
-  config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
-}, async (request, reply) => {
-  const { id } = request.params as { id: string };
-  return handleSnapshotRequest(id, reply);
-});
-
-// Backwards-compatible alias — plugin bundles published before the /api/:id
-// refactor call this path. Keep in sync with /api/:id above.
-fastify.get('/data/:id', {
-  config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
-}, async (request, reply) => {
-  const { id } = request.params as { id: string };
-  return handleSnapshotRequest(id, reply);
-});
+// /health, /api/:id and /data/:id live in a pure plugin so the health-truth
+// and 503-vs-404 logic is testable without booting the server (see routes.ts).
+fastify.register(routesPlugin);
 
 import { run as downloadSeeders } from './scripts/download-seeders';
 import { checkJwksReachable } from './startup-checks';
