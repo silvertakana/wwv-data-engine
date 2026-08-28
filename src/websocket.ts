@@ -3,6 +3,7 @@ import { getLiveSnapshot } from './redis';
 import { getRegisteredPluginIds } from './scheduler';
 import { canonicalSeederFor, SEEDER_ALIASES } from './seeder-aliases';
 import { verifyEngineToken } from './jwt-auth';
+import type { SeederHealth } from './seeder-health';
 
 export type WebSocketAuthMessage = {
   type: 'auth';
@@ -268,7 +269,16 @@ export function broadcastPluginData(pluginId: string, payload: unknown) {
   );
 }
 
-export type SeederStatus = { status: string; lastGood: string | null };
+/**
+ * type:'status' frame payload. `health` is the wire-contract seeder-health
+ * payload (see seeder-health.ts); additive — clients that only know
+ * status/lastGood keep working.
+ */
+export type SeederStatus = {
+  status: string;
+  lastGood: string | null;
+  health?: SeederHealth;
+};
 
 export function broadcastSeederStatus(pluginId: string, status: SeederStatus) {
   const ids = [pluginId, ...(SEEDER_ALIASES[pluginId] ?? [])];

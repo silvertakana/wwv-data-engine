@@ -82,18 +82,20 @@ describe('scheduler stale/error envelope', () => {
 
     // Run 4 succeeded: final state has 2 failures (boom1, boom2), itemsSeen from
     // the latest successful array, and lastError cleared by the success reset.
-    expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(1);
-    expect(broadcastSeederStatusMock).toHaveBeenCalledWith('seed-run', {
+    // Broadcasts: ok(run1) + stale(run2) + ok(run4) = 3 frames total.
+    expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(3);
+    expect(broadcastSeederStatusMock).toHaveBeenCalledWith('seed-run', expect.objectContaining({
       status: 'stale',
       lastGood: fetchedAtOfSuccessCall(0),
-    });
+    }));
     expect(seederMeta['seed-run'].failureCount).toBe(2);
     expect(seederMeta['seed-run'].itemsSeen).toBe(1);
     expect(seederMeta['seed-run'].lastError).toBeNull();
 
-    // The run-3 repeat failure was debounced: still exactly one stale frame,
-    // and seederStatus only reflects successes.
-    expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(1);
+    // The run-3 repeat failure was debounced: still exactly one stale frame
+    // (the two ok frames come from the successful runs, not the failures).
+    expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(3);
+    expect(broadcastSeederStatusMock.mock.calls.filter(c => (c[1] as { status?: string }).status === 'stale')).toHaveLength(1);
   });
 
   it('AC-A2: stale path drives broadcastSeederStatus with the correct pluginId/status shape', async () => {
@@ -146,10 +148,10 @@ describe('scheduler stale/error envelope', () => {
     await runIntervals(1);
 
     expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(1);
-    expect(broadcastSeederStatusMock).toHaveBeenCalledWith('seed-first', {
+    expect(broadcastSeederStatusMock).toHaveBeenCalledWith('seed-first', expect.objectContaining({
       status: 'stale',
       lastGood: null,
-    });
+    }));
     expect(seederMeta['seed-first'].failureCount).toBe(1);
   });
 
@@ -164,12 +166,12 @@ describe('scheduler stale/error envelope', () => {
 
     await runIntervals(3);
 
-    // Failure (emit #1) -> success (reset) -> failure (emit #2).
-    expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(2);
-    expect(broadcastSeederStatusMock).toHaveBeenLastCalledWith('seed-reemit', {
+    // Failure (emit #1) -> success (reset + ok frame) -> failure (emit #2).
+    expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(3);
+    expect(broadcastSeederStatusMock).toHaveBeenLastCalledWith('seed-reemit', expect.objectContaining({
       status: 'stale',
       lastGood: fetchedAtOfSuccessCall(0),
-    });
+    }));
   });
 
   it('records itemsSeen on success and truncates lastError to 200 chars', async () => {
@@ -196,12 +198,35 @@ describe('scheduler stale/error envelope', () => {
     // The kickstart run fires synchronously-bound during startScheduler.
     await runIntervals(0);
 
-    expect(broadcastSeederStatusMock).toHaveBeenCalledWith('seed-cron', {
+    expect(broadcastSeederStatusMock).toHaveBeenCalledWith('seed-cron', expect.objectContaining({
       status: 'stale',
       lastGood: null,
-    });
+    }));
     expect(seederMeta['seed-cron'].failureCount).toBe(1);
     expect(seederMeta['seed-cron'].lastError).toBe('cron boom');
+  });
+
+  it('cron success records through the SAME path as interval seeders (ok frame + reset metrics)', async () => {
+    const fnMock = vi.fn().mockResolvedValue(undefined);
+    registerSeeders([freshCronSeeder('seed-cron-ok', fnMock)]);
+    startScheduler();
+
+    // The kickstart run fires synchronously-bound during startScheduler.
+    await runIntervals(0);
+
+    // Success on the cron path must emit an ok frame carrying the wire-contract
+    // health payload — the single choke point shared with interval seeders.
+    expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(1);
+    const okCall = broadcastSeederStatusMock.mock.calls[0];
+    expect(okCall[0]).toBe('seed-cron-ok');
+    expect(okCall[1]).toMatchObject({ status: 'ok', lastGood: expect.any(String) });
+    expect(okCall[1]).toHaveProperty('health');
+    expect((okCall[1] as { health: { pluginId: string } }).health.pluginId).toBe('seed-cron-ok');
+    expect(seederMeta['seed-cron-ok'].lastRun).toBeTypeOf('number');
+    expect(seederMeta['seed-cron-ok'].failureCount).toBe(0);
+    expect(seederMeta['seed-cron-ok'].lastError).toBeNull();
+    // The cron cadence was captured at registration: the wire payload carries it.
+    expect((okCall[1] as { health: { cron: string | null } }).health.cron).toBe('* * * * *');
   });
 
   it('data-falsy return is treated as a failure', async () => {
@@ -211,10 +236,10 @@ describe('scheduler stale/error envelope', () => {
 
     await runIntervals(1);
 
-    expect(broadcastSeederStatusMock).toHaveBeenCalledWith('seed-falsy', {
+    expect(broadcastSeederStatusMock).toHaveBeenCalledWith('seed-falsy', expect.objectContaining({
       status: 'stale',
       lastGood: null,
-    });
+    }));
     expect(seederMeta['seed-falsy'].failureCount).toBe(1);
     expect(seederMeta['seed-falsy'].lastError).toBe('Seeder returned no data');
   });
