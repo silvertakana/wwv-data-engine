@@ -1,5 +1,7 @@
 import { redis, setLiveSnapshot } from './redis';
 import { broadcastSeederStatus } from './websocket';
+import { deriveExpectedMaxAgeMs, deriveSeederHealth } from './seeder-health';
+import type { SeederHealth } from './seeder-health';
 import * as cron from 'node-cron';
 import type { SeederModule } from './seeder-loader';
 
@@ -31,9 +33,38 @@ export type SeederMeta = {
   lastError: string | null;
   failureCount: number;
   itemsSeen: number;
+  /** Declared interval cadence in ms; null for cron or unknown-cadence seeders. */
+  intervalMs: number | null;
+  /** Declared cron expression verbatim; null for interval seeders. */
+  cron: string | null;
+  /**
+   * Per-seeder max snapshot age before stale, derived from the seeder's OWN
+   * cadence (see seeder-health.ts): interval seeders max(3x interval, 60s),
+   * cron seeders max(cronPeriod + grace, 60s). null when no cadence is
+   * declared.
+   */
+  expectedMaxAgeMs: number | null;
 };
 
 export const seederMeta: Record<string, SeederMeta> = {};
+
+/**
+ * Wire-contract health payload for one seeder (see seeder-health.ts for the
+ * globe-mirrored shape). Computed from seederMeta at call time so `stale`
+ * reflects the moment of the /health request or status frame.
+ */
+export function seederHealthFor(id: string): SeederHealth {
+  return deriveSeederHealth(id, ensureSeederMeta(id));
+}
+
+/** All known seeders' health payloads, keyed by plugin id. */
+export function allSeederHealth(): Record<string, SeederHealth> {
+  const out: Record<string, SeederHealth> = {};
+  for (const id of Object.keys(seederMeta)) {
+    out[id] = seederHealthFor(id);
+  }
+  return out;
+}
 
 // Last-known-good bookkeeping: the most recent successful fetchedAt ISO string
 // (stale envelope's lastGood) and whether the seeder is currently reporting
@@ -47,10 +78,28 @@ const MAX_ERROR_LENGTH = 200;
 function ensureSeederMeta(id: string): SeederMeta {
   let meta = seederMeta[id];
   if (!meta) {
-    meta = { lastRun: null, lastError: null, failureCount: 0, itemsSeen: 0 };
+    meta = {
+      lastRun: null,
+      lastError: null,
+      failureCount: 0,
+      itemsSeen: 0,
+      intervalMs: null,
+      cron: null,
+      expectedMaxAgeMs: null,
+    };
     seederMeta[id] = meta;
   }
   return meta;
+}
+
+// Broadcast the ok/stale status frame carrying the wire-contract health
+// payload. Broadcast failures must never escape a timer tick.
+function tryBroadcastSeederStatus(id: string, status: { status: string; lastGood: string | null }, health: SeederHealth) {
+  try {
+    broadcastSeederStatus(id, { ...status, health });
+  } catch (broadcastError) {
+    console.error(`[Scheduler] Failed to broadcast status for ${id}:`, broadcastError);
+  }
 }
 
 function recordSeederSuccess(id: string, fetchedAt: string, itemsSeen: number) {
@@ -61,6 +110,9 @@ function recordSeederSuccess(id: string, fetchedAt: string, itemsSeen: number) {
   meta.lastRun = Date.now();
   meta.lastError = null;
   meta.itemsSeen = itemsSeen;
+  // Additive ok frame: same type:'status' wire shape as the stale frame,
+  // so subscribers can render recovery + live health without polling /health.
+  tryBroadcastSeederStatus(id, { status: 'ok', lastGood: fetchedAt }, seederHealthFor(id));
 }
 
 function recordSeederFailure(id: string, error: unknown) {
@@ -74,15 +126,10 @@ function recordSeederFailure(id: string, error: unknown) {
   // stale across consecutive failures, this is a no-op.
   if (!staleActive.get(id)) {
     staleActive.set(id, true);
-    try {
-      broadcastSeederStatus(id, {
-        status: 'stale',
-        lastGood: lastGoodFetchedAt.get(id) ?? null,
-      });
-    } catch (broadcastError) {
-      // Never let a broadcast failure escape a timer tick and kill the process.
-      console.error(`[Scheduler] Failed to broadcast stale status for ${id}:`, broadcastError);
-    }
+    tryBroadcastSeederStatus(id, {
+      status: 'stale',
+      lastGood: lastGoodFetchedAt.get(id) ?? null,
+    }, seederHealthFor(id));
   }
 }
 
@@ -93,6 +140,12 @@ export function registerSeeders(seeders: SeederModule[]) {
   registeredSeeders = seeders;
   for (const seeder of seeders) {
     seederStatus[seeder.id] = null;
+    // Capture the seeder's own declared cadence at registration so staleness
+    // is derived per-seeder, never from a global threshold.
+    const meta = ensureSeederMeta(seeder.id);
+    meta.intervalMs = typeof seeder.interval === 'number' ? seeder.interval : null;
+    meta.cron = typeof seeder.cron === 'string' ? seeder.cron : null;
+    meta.expectedMaxAgeMs = deriveExpectedMaxAgeMs({ intervalMs: seeder.interval, cron: seeder.cron });
   }
 }
 

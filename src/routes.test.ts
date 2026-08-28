@@ -65,7 +65,15 @@ describe('/health — redis liveness + seeder meta truth', () => {
   it('AC-B1: /health returns 200 ok with seeders scalar map + seederMeta when redis.ping resolves', async () => {
     mocks.redisPingMock.mockResolvedValue('PONG');
     seederStatus['mock-seeder'] = 1234567890;
-    seederMeta['mock-seeder'] = { lastRun: 1234567890, lastError: null, failureCount: 2, itemsSeen: 42 };
+    seederMeta['mock-seeder'] = {
+      lastRun: 1234567890,
+      lastError: null,
+      failureCount: 2,
+      itemsSeen: 42,
+      intervalMs: null,
+      cron: null,
+      expectedMaxAgeMs: null,
+    };
 
     const app = buildApp();
     const res = await app.inject({ method: 'GET', url: '/health' });
@@ -85,6 +93,21 @@ describe('/health — redis liveness + seeder meta truth', () => {
       lastError: null,
       failureCount: 2,
       itemsSeen: 42,
+      intervalMs: null,
+      cron: null,
+      expectedMaxAgeMs: null,
+    });
+    // The seederHealth section is additive and derived: an id present in
+    // seederMeta but with no cadence still yields the full wire shape.
+    expect(body.seederHealth['mock-seeder']).toEqual({
+      pluginId: 'mock-seeder',
+      lastRun: 1234567890,
+      lastError: null,
+      failureCount: 2,
+      intervalMs: null,
+      cron: null,
+      expectedMaxAgeMs: null,
+      stale: false,
     });
   });
 
@@ -193,5 +216,43 @@ describe('seeder meta integration through scheduler -> /health', () => {
     // seeders.<id> must remain a Number scalar, not an object.
     expect(typeof body.seeders['seed-b4']).toBe('number');
     expect(Array.isArray(body.seeders['seed-b4'])).toBe(false);
+  });
+
+  it('AC-B5: /health seederHealth section exposes the cadence-derived wire contract and cadence-aware stale', async () => {
+    mocks.redisPingMock.mockResolvedValue('PONG');
+    const fetchMock = vi.fn().mockResolvedValue([{ id: 1 }]);
+    const id = 'seed-health-section';
+
+    vi.useFakeTimers();
+    registerSeeders([{ id, name: id, interval: 10_000, fetch: fetchMock }]);
+    startScheduler();
+    await vi.advanceTimersByTimeAsync(0); // kickstart success
+    vi.useRealTimers();
+
+    const app = buildApp();
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    // Cadence captured at registration; expectedMaxAgeMs derived from the
+    // seeder's OWN 10s interval: max(3 x 10s, floor) = 60s floor.
+    expect(body.seederHealth[id]).toEqual({
+      pluginId: id,
+      lastRun: expect.any(Number),
+      lastError: null,
+      failureCount: 0,
+      intervalMs: 10_000,
+      cron: null,
+      expectedMaxAgeMs: 60_000,
+      stale: false,
+    });
+
+    // Drive the lastRun backwards past the derived max age: stale must flip
+    // without any global threshold being involved.
+    seederMeta[id].lastRun = Date.now() - 120_000;
+    const staleRes = await app.inject({ method: 'GET', url: '/health' });
+    expect(staleRes.statusCode).toBe(200);
+    expect(staleRes.json().seederHealth[id].stale).toBe(true);
+    expect(staleRes.json().seederHealth[id].expectedMaxAgeMs).toBe(60_000);
   });
 });

@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyPluginAsync } from 'fastify';
 import { redis, getLiveSnapshot } from './redis';
-import { seederStatus, seederMeta } from './scheduler';
+import { seederStatus, seederMeta, allSeederHealth } from './scheduler';
 import { canonicalSeederFor } from './seeder-aliases';
 import { toKebabCase } from './seeder-loader';
 
@@ -96,6 +96,9 @@ export const routesPlugin: FastifyPluginAsync = async (app: FastifyInstance) => 
       timestamp: Date.now(),
       seeders: seederStatus,
       seederMeta,
+      // Per-seeder wire-contract health (see seeder-health.ts), computed at
+      // request time so `stale` reflects cadence-aware freshness right now.
+      seederHealth: allSeederHealth(),
       redis: redisState,
     };
   });
