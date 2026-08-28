@@ -215,24 +215,66 @@ export function handleConnection(connection: WebSocket, _request: unknown) {
   });
 }
 
-export function broadcastPluginData(pluginId: string, payload: unknown) {
-  // Fan out under every id a subscriber could be using: the seeder's
-  // canonical name plus any UI-plugin aliases registered above.
-  const ids = [pluginId, ...(SEEDER_ALIASES[pluginId] ?? [])];
+// Maximum buffered bytes a connection may hold before a fan-out skips it.
+// Beyond this, a backpressure-stalled client would otherwise accumulate
+// unbounded outbound data; skipping keeps the broadcast moving to healthy
+// subscribers (the connection is not terminated, just passed over this batch).
+const MAX_BUFFERED_AMOUNT = 1_000_000;
+
+type FrameBuilder = (id: string) => string;
+
+// Fan a single payload out to every connection subscribed to one of the given
+// ids, serializing the frame ONCE per id (shared verbatim by every subscriber
+// of that id). Sends are hardened: any throw terminates and evicts the broken
+// socket rather than failing the whole broadcast.
+function fanOutToSubscribers(ids: string[], buildFrame: FrameBuilder): void {
+  const frameById = new Map<string, string>();
+  for (const id of ids) frameById.set(id, buildFrame(id));
 
   for (const connection of connections) {
+    // Skip backpressure-stalled connections for this batch.
+    if (connection.bufferedAmount > MAX_BUFFERED_AMOUNT) continue;
+
     const subs = subscriptions.get(connection);
     if (!subs) continue;
     for (const id of ids) {
       if (subs.has(id)) {
-        // Send the message under the id the *subscriber* asked for,
-        // so plugin-side `mapWebsocketPayload` sees a `pluginId` that
-        // matches the plugin's own configured id.
-        connection.send(JSON.stringify({ type: 'data', pluginId: id, payload }));
+        try {
+          // Send the message under the id the *subscriber* asked for,
+          // so plugin-side `mapWebsocketPayload` sees a `pluginId` that
+          // matches the plugin's own configured id.
+          connection.send(frameById.get(id) as string);
+        } catch {
+          try {
+            connection.terminate();
+          } catch {
+            // terminating a dead socket can also throw; nothing to do
+          }
+          connections.delete(connection);
+          subscriptions.delete(connection);
+        }
         break; // one subscriber ≠ multiple deliveries of the same payload
       }
     }
   }
 }
 
-Object.assign(globalThis, { broadcastPluginData });
+export function broadcastPluginData(pluginId: string, payload: unknown) {
+  // Fan out under every id a subscriber could be using: the seeder's
+  // canonical name plus any UI-plugin aliases registered above.
+  const ids = [pluginId, ...(SEEDER_ALIASES[pluginId] ?? [])];
+  fanOutToSubscribers(ids, (id) =>
+    JSON.stringify({ type: 'data', pluginId: id, payload }),
+  );
+}
+
+export type SeederStatus = { status: string; lastGood: string | null };
+
+export function broadcastSeederStatus(pluginId: string, status: SeederStatus) {
+  const ids = [pluginId, ...(SEEDER_ALIASES[pluginId] ?? [])];
+  fanOutToSubscribers(ids, (id) =>
+    JSON.stringify({ type: 'status', pluginId: id, ...status }),
+  );
+}
+
+Object.assign(globalThis, { broadcastPluginData, broadcastSeederStatus });
