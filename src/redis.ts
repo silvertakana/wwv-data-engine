@@ -77,20 +77,24 @@ export async function setLiveSnapshot(source: string, payload: unknown, ttlSecon
  */
 export async function getLiveSnapshot(source: string) {
   const key = `data:${source}:live`;
+  // Only the Redis GET can fail here. A clean miss (no key) returns null; an
+  // operational Redis failure throws a distinguishable marker so callers can
+  // 503 instead of mistaking an outage for a missing snapshot (404).
+  let data: Buffer | null;
   try {
     // We must use getBuffer natively in ioredis to prevent it from coercing raw bytes to a utf8 string
-    const data = await redis.getBuffer(key);
-    if (!data) return null;
-    
-    try {
-      const decompressed = zlib.unzipSync(data);
-      return JSON.parse(decompressed.toString('utf-8'));
-    } catch {
-      // Fallback if data was stored as plain string before compression was introduced
-      return JSON.parse(data.toString('utf-8'));
-    }
+    data = await redis.getBuffer(key);
   } catch (error) {
     console.error(`[Redis] Failed to get live snapshot ${source}:`, error);
-    return null;
+    throw new Error('redis-unavailable', { cause: error });
+  }
+  if (!data) return null;
+
+  try {
+    const decompressed = zlib.unzipSync(data);
+    return JSON.parse(decompressed.toString('utf-8'));
+  } catch {
+    // Fallback if data was stored as plain string before compression was introduced
+    return JSON.parse(data.toString('utf-8'));
   }
 }
