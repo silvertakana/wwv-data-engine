@@ -3,3 +3,6 @@ dist
 .env
 .git
 .github
+# Built seeders must never enter the build context: the image is empty and the
+# engine downloads seeders itself at runtime.
+seeders
