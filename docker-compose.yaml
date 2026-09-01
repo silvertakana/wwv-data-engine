@@ -1,6 +1,11 @@
 services:
   wwv-data-engine:
-    build: .
+    image: ghcr.io/silvertakana/wwv-data-engine:latest
+    # Env vars come from Coolify's .env next to this file; required:false keeps
+    # a local clone without .env working.
+    env_file:
+      - path: .env
+        required: false
     ports:
       - "5000:5000"
     environment:
@@ -10,7 +15,7 @@ services:
       wwv-redis-cache:
         condition: service_healthy
     volumes:
-      - ../worldwideview/local-seeders:/app/seeders:ro
+      - engine-data:/app/data
     restart: unless-stopped
 
   wwv-redis-cache:
@@ -27,4 +32,5 @@ services:
       - redis-data:/data
 
 volumes:
+  engine-data:
   redis-data:
