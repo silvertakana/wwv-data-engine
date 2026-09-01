@@ -139,7 +139,7 @@ jobs:
            git config user.email "gremlin@users.noreply.github.com"
 
       - name: Run OpenCode
-        uses: anomalyco/opencode/github@v1.17.13
+        uses: anomalyco/opencode/github@v1.18.25
         env:
           OPENAI_API_KEY: ${{ secrets.LITELLM_API_KEY }}
           OPENCODE_CONFIG_CONTENT: '{"provider":{"litellm":{"npm":"@ai-sdk/openai-compatible","options":{"baseURL":"https://llm2.worldwideview.dev/v1"},"models":{"deepseek-v4-flash":{}}}}}'
