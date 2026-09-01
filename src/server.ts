@@ -124,7 +124,7 @@ fastify.get('/api/seeders/active', async () => {
 // and 503-vs-404 logic is testable without booting the server (see routes.ts).
 fastify.register(routesPlugin);
 
-import { run as downloadSeeders } from './scripts/download-seeders';
+import { run as downloadSeeders, seederSync } from './scripts/download-seeders';
 import { checkJwksReachable } from './startup-checks';
 
 async function start() {
@@ -132,6 +132,11 @@ async function start() {
     if (process.env.DOWNLOAD_SEEDERS === 'true') {
       console.log('[Server] DOWNLOAD_SEEDERS is true. Downloading latest seeders...');
       await downloadSeeders();
+      if (seederSync.ok === true) {
+        console.log(`[Seeder] Sync OK: ${seederSync.community.packages} community + ${seederSync.private.packages} private = ${seederSync.mergedCount} seeders`);
+      } else {
+        console.log(`[Seeder] Sync FAILED: community=${seederSync.community.error ?? 'ok'} private=${seederSync.private.error ?? 'ok'}`);
+      }
     }
 
     if (process.env.WWV_SKIP_WS_AUTH === 'true') {

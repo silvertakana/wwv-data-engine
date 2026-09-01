@@ -42,9 +42,10 @@ COPY package.json pnpm-lock.yaml ./
 
 # Copy built artifacts and fully resolved production node_modules from builder
 # This avoids native recompilation issues (better-sqlite3) in the slim runner
+# Seeders are deliberately NOT copied: the image ships empty and downloads them
+# at runtime (download-seeders.ts), so every redeploy refreshes the data sources.
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/seeders ./seeders
 
 # Create directory for SQLite DB
 RUN mkdir -p /app/data

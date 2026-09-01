@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import { routesPlugin, resetRedisHealthCounters } from './routes';
 import { seederMeta, seederStatus, registerSeeders, startScheduler } from './scheduler';
+import { seederSync, computeSeederSyncOk } from './scripts/download-seeders';
 import type { SeederContext, SeederModule } from './seeder-loader';
 
 // Hoisted mock fns so ./redis and ./websocket can be stubbed before the real
@@ -38,6 +39,17 @@ function resetRegistries() {
   for (const key of Object.keys(seederStatus)) delete seederStatus[key];
 }
 
+// Reset the shared seederSync object (and the env switch the /health/seeders
+// verdict reads) so each test starts from a never-synced engine.
+function resetSeederSync() {
+  delete process.env.DOWNLOAD_SEEDERS;
+  seederSync.ok = null;
+  seederSync.lastAttemptAt = null;
+  seederSync.community = { ok: false, packages: 0, error: null };
+  seederSync.private = { ok: false, packages: 0, error: null };
+  seederSync.mergedCount = 0;
+}
+
 // Bare Fastify instance wired only to the pure plugin — no rate-limit /
 // websocket plugins needed, so the acceptance criteria are isolated.
 function buildApp() {
@@ -49,6 +61,7 @@ function buildApp() {
 beforeEach(() => {
   vi.useRealTimers();
   resetRegistries();
+  resetSeederSync();
   resetRedisHealthCounters();
   mocks.redisPingMock.mockReset();
   mocks.getLiveSnapshotMock.mockReset();
@@ -254,5 +267,85 @@ describe('seeder meta integration through scheduler -> /health', () => {
     expect(staleRes.statusCode).toBe(200);
     expect(staleRes.json().seederHealth[id].stale).toBe(true);
     expect(staleRes.json().seederHealth[id].expectedMaxAgeMs).toBe(60_000);
+  });
+});
+
+describe('GET /health/seeders — 200 vs 503 verdict from the seeder sync state', () => {
+  it('AC-C0: /health stays 200 and carries the additive seedersSync field', async () => {
+    mocks.redisPingMock.mockResolvedValue('PONG');
+    seederSync.lastAttemptAt = 99;
+    seederSync.community = { ok: true, packages: 2, error: null };
+    const app = buildApp();
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().seedersSync).toEqual(seederSync);
+  });
+
+  it('AC-C1: 200 with full sync state when sync ok and mergedCount > 0', async () => {
+    process.env.DOWNLOAD_SEEDERS = 'true';
+    seederSync.ok = true;
+    seederSync.lastAttemptAt = 1_234;
+    seederSync.community = { ok: true, packages: 12, error: null };
+    seederSync.private = { ok: true, packages: 3, error: null };
+    seederSync.mergedCount = 15;
+
+    const app = buildApp();
+    const res = await app.inject({ method: 'GET', url: '/health/seeders' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      ok: true,
+      mergedCount: 15,
+      community: { ok: true, packages: 12, error: null },
+      private: { ok: true, packages: 3, error: null },
+      lastAttemptAt: 1_234,
+    });
+  });
+
+  it('AC-C2: 503 download-disabled when DOWNLOAD_SEEDERS is not exactly true', async () => {
+    const app = buildApp();
+    const res = await app.inject({ method: 'GET', url: '/health/seeders' });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({ ok: false, reason: 'download-disabled' });
+  });
+
+  it('AC-C3: 503 not-attempted when lastAttemptAt is null (sync never ran)', async () => {
+    process.env.DOWNLOAD_SEEDERS = 'true';
+    const app = buildApp();
+    const res = await app.inject({ method: 'GET', url: '/health/seeders' });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({ ok: false, reason: 'not-attempted' });
+  });
+
+  it('AC-C4: 503 sync-failed with per-repo errors when a repo failed', async () => {
+    process.env.DOWNLOAD_SEEDERS = 'true';
+    seederSync.lastAttemptAt = 1_234;
+    seederSync.community = { ok: false, packages: 0, error: 'GitHub API returned 401 Unauthorized' };
+    seederSync.private = { ok: false, packages: 0, error: 'no GITHUB_PAT' };
+    seederSync.mergedCount = 0;
+
+    const app = buildApp();
+    const res = await app.inject({ method: 'GET', url: '/health/seeders' });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({
+      ok: false,
+      reason: 'sync-failed',
+      community: { ok: false, packages: 0, error: 'GitHub API returned 401 Unauthorized' },
+      private: { ok: false, packages: 0, error: 'no GITHUB_PAT' },
+    });
+  });
+
+  it('AC-C5: a private skip (no GITHUB_PAT) does NOT fail the sync verdict', async () => {
+    process.env.DOWNLOAD_SEEDERS = 'true';
+    seederSync.lastAttemptAt = 1_234;
+    seederSync.community = { ok: true, packages: 8, error: null };
+    seederSync.private = { ok: false, packages: 0, error: 'no GITHUB_PAT' };
+    seederSync.mergedCount = 8;
+    seederSync.ok = computeSeederSyncOk(seederSync.community, seederSync.private);
+
+    const app = buildApp();
+    const res = await app.inject({ method: 'GET', url: '/health/seeders' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().ok).toBe(true);
+    expect(res.json().mergedCount).toBe(8);
   });
 });

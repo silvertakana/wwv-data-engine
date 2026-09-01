@@ -3,6 +3,8 @@ import { redis, getLiveSnapshot } from './redis';
 import { seederStatus, seederMeta, allSeederHealth } from './scheduler';
 import { canonicalSeederFor } from './seeder-aliases';
 import { toKebabCase } from './seeder-loader';
+import { seederSync } from './scripts/download-seeders';
+import { evaluateSeederSyncHealth } from './seeder-sync-health';
 
 // Distinguishable marker for a Redis OPERATIONAL failure, as opposed to a clean
 // miss on the key. server.ts's snapshot routes map this to a 503; a null return
@@ -99,8 +101,22 @@ export const routesPlugin: FastifyPluginAsync = async (app: FastifyInstance) => 
       // Per-seeder wire-contract health (see seeder-health.ts), computed at
       // request time so `stale` reflects cadence-aware freshness right now.
       seederHealth: allSeederHealth(),
+      // Latest seeder-download pass, spread so the response is a snapshot even
+      // though the live object is mutated by the downloader.
+      seedersSync: { ...seederSync },
       redis: redisState,
     };
+  });
+
+  // Seeders-sync readiness (200 only when the last sync succeeded with at
+  // least one package, 503 with a documented reason otherwise). /health stays
+  // 200 unconditionally; a separate liveness workflow depends on it.
+  app.get('/health/seeders', async (_request, reply) => {
+    const { status, body } = evaluateSeederSyncHealth(
+      process.env.DOWNLOAD_SEEDERS === 'true',
+      seederSync,
+    );
+    return reply.status(status).send(body);
   });
 
   app.get('/api/:id', {
