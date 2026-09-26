@@ -3,6 +3,13 @@ import { getLiveSnapshot } from './redis';
 import { getRegisteredPluginIds } from './scheduler';
 import { canonicalSeederFor, SEEDER_ALIASES } from './seeder-aliases';
 import { verifyEngineToken } from './jwt-auth';
+import {
+  createRateLimiter,
+  isSubscriptionAllowed,
+  messageRateLimitConfig,
+  WS_CLOSE_NOT_IN_SCOPE,
+  WS_CLOSE_RATE_LIMIT,
+} from './ws-access';
 import type { SeederHealth } from './seeder-health';
 
 export type WebSocketAuthMessage = {
@@ -28,6 +35,14 @@ const MAX_SUBSCRIPTIONS_PER_CONNECTION = 50;
 export const WS_CLOSE_INVALID_PLUGIN_ID = 4400;
 export const WS_CLOSE_SUBSCRIPTION_LIMIT = 4401;
 
+// Access rules (message rate limit, ticket scope) live in ws-access.ts.
+export {
+  createRateLimiter,
+  isSubscriptionAllowed,
+  WS_CLOSE_NOT_IN_SCOPE,
+  WS_CLOSE_RATE_LIMIT,
+} from './ws-access';
+
 export function isValidPluginId(pluginId: unknown): pluginId is string {
   return (
     typeof pluginId === 'string' &&
@@ -52,6 +67,10 @@ export function handleConnection(connection: WebSocket, _request: unknown) {
   // (no real JWT verification). When true, subsequent auth messages are accepted
   // for post-welcome JWT verification but the connection is never closed on failure.
   let authBypassed = SKIP_WS_AUTH;
+  // Scope carried by the ticket, used to authorize subscriptions. Undefined
+  // means the ticket carried no scope claim - accepted for any channel.
+  let ticketScope: string | undefined;
+  const rateLimiter = createRateLimiter(messageRateLimitConfig());
 
   // Pre-authenticate immediately when auth is bypassed
   if (SKIP_WS_AUTH) {
@@ -104,6 +123,7 @@ export function handleConnection(connection: WebSocket, _request: unknown) {
 
 
         isAuthenticated = true;
+        ticketScope = decoded.scope;
         if (authTimeout) clearTimeout(authTimeout);
 
         // Enforce Max TTL timeout for socket
@@ -135,6 +155,12 @@ export function handleConnection(connection: WebSocket, _request: unknown) {
 
     // Already authenticated
     try {
+      // Bound the work one socket can ask for. Closes rather than dropping, so a
+      // runaway client learns immediately instead of silently losing frames.
+      if (!rateLimiter.allow()) {
+        connection.close(WS_CLOSE_RATE_LIMIT, 'Message rate limit exceeded');
+        return;
+      }
       const data = JSON.parse(message);
       
       // When auth was bypassed via SKIP_WS_AUTH, accept auth messages for
@@ -145,6 +171,7 @@ export function handleConnection(connection: WebSocket, _request: unknown) {
           try {
             const decoded = await verifyEngineToken(data.token);
             authBypassed = false;
+            ticketScope = decoded.scope;
             console.log(`[WS] Auth verified post-welcome for userId: ${decoded.sub}`);
             const expMs = decoded.exp * 1000;
             const now = Date.now();
@@ -169,6 +196,13 @@ export function handleConnection(connection: WebSocket, _request: unknown) {
         // WWV_SKIP_WS_AUTH=true, so it must not accept arbitrary input.
         if (!isValidPluginId(data.pluginId)) {
           connection.close(WS_CLOSE_INVALID_PLUGIN_ID, 'Invalid pluginId');
+          return;
+        }
+        // Authorize against the ticket's scope before the id reaches the
+        // subscription set: authentication alone does not bound what a
+        // connection may read.
+        if (!isSubscriptionAllowed(ticketScope, data.pluginId)) {
+          connection.close(WS_CLOSE_NOT_IN_SCOPE, 'Subscription outside ticket scope');
           return;
         }
         const subs = subscriptions.get(connection);
