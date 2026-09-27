@@ -125,7 +125,7 @@ fastify.get('/api/seeders/active', async () => {
 fastify.register(routesPlugin);
 
 import { run as downloadSeeders, seederSync } from './scripts/download-seeders';
-import { checkJwksReachable } from './startup-checks';
+import { checkJwksReachable, originAllowlistWarning } from './startup-checks';
 
 async function start() {
   try {
@@ -142,6 +142,9 @@ async function start() {
     if (process.env.WWV_SKIP_WS_AUTH === 'true') {
       console.warn('[Server] WARNING: WWV_SKIP_WS_AUTH=true — all WebSocket connections are unauthenticated. Acceptable until app auth is implemented.');
     }
+
+    const originWarning = originAllowlistWarning();
+    if (originWarning) console.warn(originWarning);
 
     if (process.env.WWV_SKIP_WS_AUTH !== 'true') {
       const jwksUrl = process.env.JWKS_URL;

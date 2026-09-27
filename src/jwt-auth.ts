@@ -1,10 +1,25 @@
 // ADR-001B: tickets are Ed25519 JWTs issued by the Marketplace. The issuer is
-// fixed regardless of where the Marketplace runs (it is hardcoded at signing).
-const ISSUER = 'https://marketplace.worldwideview.dev';
+// part of the signature, so it must match whatever the minting Marketplace set
+// — a self-hosted Marketplace therefore needs its own issuer here, alongside
+// the JWKS_URL that already points at it.
+export const DEFAULT_ISSUER = 'https://marketplace.worldwideview.dev';
+
+// Read per call, not at module load: the engine boots before some deployments
+// finish injecting env, and tests set this after import.
+export function ticketIssuer(): string {
+  const configured = process.env.JWT_ISSUER?.trim();
+  return configured ? configured : DEFAULT_ISSUER;
+}
 
 export interface EngineTokenClaims {
   sub: string;
   exp: number;
+  /** Plan tier the ticket was minted for. Advisory; access is decided by scope. */
+  tier?: string;
+  /** Space-separated permission tokens, e.g. 'plugins:read' or 'plugins:read:earthquakes'. */
+  scope?: string;
+  /** Ticket id, minted by the Marketplace. Not yet tracked for replay defence. */
+  jti?: string;
 }
 
 // ENGINE_ID tightens the audience to a specific engine; 'wwv-data-engines' is
@@ -29,7 +44,7 @@ interface JoseModule {
       algorithms?: string[];
       clockTolerance?: number;
     },
-  ): Promise<{ payload: { sub?: unknown; exp?: unknown } }>;
+  ): Promise<{ payload: Record<string, unknown> }>;
 }
 
 let josePromise: Promise<JoseModule> | null = null;
@@ -55,20 +70,35 @@ async function getKeyResolver(): Promise<JwksResolver> {
   return keyResolver;
 }
 
+// A verified signature proves the token was minted by the Marketplace; it does
+// not prove the claims are shaped the way this engine expects. Required claims
+// must be present and correctly typed, and optional claims are carried only when
+// they are strings — a malformed claim is dropped rather than trusted.
+export function extractClaims(payload: Record<string, unknown>): EngineTokenClaims {
+  if (typeof payload.sub !== 'string') {
+    throw new Error('Token missing required claim: sub');
+  }
+  if (typeof payload.exp !== 'number') {
+    throw new Error('Token missing required claim: exp');
+  }
+  const claims: EngineTokenClaims = { sub: payload.sub, exp: payload.exp };
+  if (typeof payload.tier === 'string') claims.tier = payload.tier;
+  if (typeof payload.scope === 'string') claims.scope = payload.scope;
+  if (typeof payload.jti === 'string') claims.jti = payload.jti;
+  return claims;
+}
+
 export async function verifyEngineToken(token: string): Promise<EngineTokenClaims> {
   const { jwtVerify } = await loadJose();
   const resolver = await getKeyResolver();
   try {
     const { payload } = await jwtVerify(token, resolver, {
-      issuer: ISSUER,
+      issuer: ticketIssuer(),
       audience: acceptedAudiences(),
       algorithms: ['EdDSA'],
       clockTolerance: 30,
     });
-    if (typeof payload.sub !== 'string' || typeof payload.exp !== 'number') {
-      throw new Error('Token missing required claims (sub, exp)');
-    }
-    return payload as EngineTokenClaims;
+    return extractClaims(payload);
   } catch (err: unknown) {
     // Reset the cached resolver on network failures so the next connection
     // attempt re-initialises it — allows recovery when JWKS comes back up

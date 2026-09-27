@@ -93,11 +93,11 @@
 **Mitigation plan:** Per ADR-001 plan, "5-min expiry is the only protection; no jti tracking -- acceptable for threat model."
 **Gap found:**
 - The `accept` disposition requires an entry in the SECURITY.md accepted-risks log with explicit team sign-off. No such entry existed prior to this audit.
-- The clockTolerance of 60 seconds (`jwt-auth.ts:66`) extends the effective replay window to 6 minutes (exp + 60s). This amplification is undocumented.
+- The clock tolerance of 30 seconds (`verifyEngineToken` in `jwt-auth.ts`) extends the effective replay window to 5.5 minutes (exp + 30s). This amplification was undocumented, and earlier revisions of this document overstated the tolerance as 60 seconds.
 - No jti uniqueness tracking, no token revocation endpoint, no Redis blacklist.
 
 **Required action:** Add an explicit accepted-risk entry in the Accepted Risks section below, signed off by the responsible engineer, acknowledging:
-1. Replay window is `exp + clockTolerance` = up to ~6 minutes
+1. Replay window is `exp + clockTolerance` = up to ~5.5 minutes
 2. No jti tracking is implemented
 3. Mitigation relies entirely on short-lived tokens and TLS transport
 
@@ -136,10 +136,10 @@ Until this entry is logged and signed, this threat is OPEN.
 
 ### T-09 -- Clock Tolerance Undocumented (STRIDE: Spoofing)
 
-**Disposition:** accept (60-second clock tolerance documented here)
+**Disposition:** accept (30-second clock tolerance documented here)
 **Status:** CLOSED (accepted risk documented below)
 
-**Evidence:** `jwt-auth.ts:66` -- `clockTolerance: 60`
+**Evidence:** `verifyEngineToken` in `jwt-auth.ts` -- `clockTolerance: 30`
 **Accepted risk:** See "Accepted Risks" section, AR-01.
 
 ---
@@ -182,7 +182,8 @@ These are new attack surface areas detected during code review with no correspon
 **Location:** `server.ts:48-53`, `server.ts:67-72`
 **Description:** When `ALLOWED_ORIGINS` env var is not set, both the CORS plugin and the WebSocket upgrade preValidation default to `*` (allow all origins). In production, a misconfigured deployment with no `ALLOWED_ORIGINS` set accepts WebSocket upgrades from any origin. The ADR-001 plan mentioned an `ENFORCE_ORIGIN_ALLOWLIST` feature flag -- this flag was not implemented; instead origin enforcement is implicit in the `ALLOWED_ORIGINS` value.
 **Risk:** Medium -- bypassed by the JWT auth layer; an attacker still needs a valid JWT to receive data. However cross-site WebSocket hijacking (CSWSH) becomes possible when the origin check is absent.
-**Recommended action:** Add a startup warning when `NODE_ENV === 'production'` and `ALLOWED_ORIGINS` is not set or contains `*`.
+**Status:** mitigated (2026-09-26) -- `originAllowlistWarning()` in `startup-checks.ts` logs a warning at boot when `NODE_ENV === 'production'` and `ALLOWED_ORIGINS` is unset or contains `*`.
+**Recommended action:** implement the warning (done); keep `ALLOWED_ORIGINS` set on every deployment that serves traffic.
 
 ### UF-02 -- Sentry Error Handler May Capture JWT-Adjacent Request Data
 
@@ -200,15 +201,29 @@ These are new attack surface areas detected during code review with no correspon
 
 ---
 
+## Connection-Level Controls (2026-09-26)
+
+Authentication establishes *who* a connection is; it does not bound what that connection may do. Three controls apply per connection, wired in `websocket.ts` with the rules in `ws-access.ts`:
+
+| Control | Limit | Close code |
+|---|---|---|
+| Inbound message rate | 60 messages per 10 seconds per connection (override with `WS_MESSAGE_RATE_LIMIT` / `WS_MESSAGE_RATE_LIMIT_WINDOW_MS`) | `4402` |
+| Subscription scope | A ticket whose `scope` names channels (`plugins:read:earthquakes`) may subscribe only to those. `plugins:read` allows any channel. A ticket carrying no `scope` claim allows any channel. | `4403` |
+| Subscription count | 50 subscriptions per connection | `4401` |
+| Plugin id shape | kebab-case, 64 characters maximum | `4400` |
+
+The engine reads `scope`, `tier` and `jti` from the verified ticket. `tier` and `jti` are carried for observability and future replay defence; `jti` is still not recorded (see T-06).
+
 ## Accepted Risks Log
 
-### AR-01 -- 60-Second Clock Tolerance Extends JWT Replay Window
+### AR-01 -- 30-Second Clock Tolerance Extends JWT Replay Window
 
 **Threat:** T-09 / T-06 (overlapping)
-**Date accepted:** 2026-05-24 (documented by security audit)
-**Detail:** `jwt-auth.ts:66` sets `clockTolerance: 60`. This means a JWT with `exp = T` remains valid until `T + 60 seconds`. Combined with the nominal 5-minute token TTL, the effective replay window is approximately 6 minutes from token issuance. No jti tracking is implemented.
-**Rationale:** Clock skew between the Marketplace issuer and engine instances in distributed deployments can exceed 30 seconds. A 60-second tolerance is standard for distributed JWT systems. The short token TTL (5 minutes) limits the absolute replay window. TLS transport prevents token interception in transit.
-**Residual risk:** An attacker who obtains a valid token (e.g., via a compromised client) can replay it for up to 6 minutes. Token revocation is not possible without a jti blacklist.
+**Date accepted:** 2026-05-24 (documented by security audit; corrected 2026-09-26)
+**Detail:** `verifyEngineToken` in `jwt-auth.ts` sets `clockTolerance: 30`. A JWT with `exp = T` therefore remains valid until `T + 30 seconds`. Combined with the nominal 5-minute token TTL, the effective replay window is approximately 5.5 minutes from issuance. No jti tracking is implemented.
+**Correction (2026-09-26):** this entry previously stated a 60-second tolerance. The implementation has always used 30 seconds, so the documented window was 30 seconds wider than the real one. The value is unchanged; the record now matches the code.
+**Rationale:** Clock skew between the minting marketplace and engine instances in distributed deployments can exceed 30 seconds, so 60 seconds is the common choice for distributed JWT systems. This engine ships 30 seconds and both hosts sync to NTP; raising it would widen the replay window by the same amount, so it is left as-is and flagged here rather than changed inside a hardening change.
+**Residual risk:** An attacker who obtains a valid token (e.g. via a compromised client) can replay it for up to 5.5 minutes. Token revocation is not possible without a jti blacklist.
 **Sign-off required:** This entry documents the technical facts. Team lead sign-off is required to formally close T-06.
 
 ---
