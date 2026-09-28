@@ -35,7 +35,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/adm-zip": "^0.5.8",
-    "@types/better-sqlite3": "^7.6.11",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/geoip-lite": "^1.4.4",
     "@types/node": "^26.6.1",
     "@types/node-cron": "^3.0.11",
