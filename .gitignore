@@ -27,3 +27,7 @@ Dockerfile.dev
 
 # Coverage reports
 coverage/
+
+# Mutation testing (Stryker)
+.stryker-tmp/
+reports/

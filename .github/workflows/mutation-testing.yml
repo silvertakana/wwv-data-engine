@@ -1,14 +1,14 @@
 name: Mutation Testing
 
-# Mutation testing is expensive (10–30 min per full run, even with
-# `coverageAnalysis: "perTest"`), so we don't gate every PR on it.
-# Instead it runs weekly so we catch drift in test quality, and on
-# demand via workflow_dispatch when someone wants to validate a
+# Mutation testing is expensive (a full run re-runs large parts of the suite once per
+# mutant), so we don't gate every PR on it. Instead it runs weekly so we catch drift in
+# test quality, and on demand via workflow_dispatch when someone wants to validate a
 # specific change.
 on:
   schedule:
     # 03:00 UTC Monday = 10 PM US Eastern Sunday night.
     - cron: '0 3 * * 1'
+
   workflow_dispatch:
 
 permissions:
@@ -25,9 +25,7 @@ jobs:
           fetch-depth: 0 # Required for Stryker's incremental mode.
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -37,6 +35,16 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Without this the incremental report is written fresh every week, and every
+      # weekly run re-tests all mutants instead of only the ones that changed.
+      - name: Restore Stryker incremental report
+        uses: actions/cache@v6
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-incremental-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            stryker-incremental-${{ github.ref }}-
 
       - name: Run Stryker
         run: pnpm exec stryker run
