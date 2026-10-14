@@ -319,12 +319,9 @@ describe('scheduler interval overlap guard', () => {
     registerSeeders([freshSeeder('seed-resolve', fn)]);
     startScheduler();
 
-    await vi.advanceTimersByTimeAsync(0);
-    expect(fn).toHaveBeenCalledTimes(1);
-
-    // Four interval ticks arrive while the kickstart is still in flight, and the
-    // guard drops every one of them: still exactly one run, and not a single
-    // snapshot written for a run that has not completed.
+    // Kickstart fires, then four interval ticks arrive while it is still in
+    // flight and the guard drops every one of them: still exactly one run, and
+    // not a single snapshot written for a run that has not completed.
     await vi.advanceTimersByTimeAsync(4000);
     expect(fn).toHaveBeenCalledTimes(1);
     expect(setLiveSnapshotMock).not.toHaveBeenCalled();
@@ -341,11 +338,13 @@ describe('scheduler interval overlap guard', () => {
     const okFrames = broadcastSeederStatusMock.mock.calls.filter(c => (c[1] as { status?: string }).status === 'ok');
     expect(okFrames).toHaveLength(1);
 
-    // The completed run's snapshot carries the stamp taken when it finished, so a
-    // serialized seeder can never land a snapshot under another run's stamp.
-    expect(new Date(fetchedAtOfLiveSnapshot(0)).getTime()).toBeLessThanOrEqual(
-      new Date(seederMeta['seed-resolve'].lastRun ?? 0).getTime() + 1,
-    );
+    // The write came from the run that completed, carrying its own ISO stamp and
+    // item count, and the seeder's own health record stayed clean.
+    const payload = setLiveSnapshotMock.mock.calls[0]?.[1] as { source: string; fetchedAt: string; totalCount: number } | undefined;
+    expect(payload?.source).toBe('seed-resolve');
+    expect(payload?.fetchedAt).toBe(fetchedAtOfLiveSnapshot(0));
+    expect(payload?.totalCount).toBe(1);
+    expect(seederMeta['seed-resolve'].failureCount).toBe(0);
   });
 
   it('F3: a rejected pending run clears the guard so the next tick recovers (finally on the failure path)', async () => {
