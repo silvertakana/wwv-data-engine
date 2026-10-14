@@ -244,3 +244,214 @@ describe('scheduler stale/error envelope', () => {
     expect(seederMeta['seed-falsy'].lastError).toBe('Seeder returned no data');
   });
 });
+
+// ---- Component F: interval-seeder overlap guard -----------------------------
+// An interval seeder whose fetch outlives its own cadence must not stack runs.
+// The guard is per-seeder and released in a finally block, so success, failure
+// and rejection all let the NEXT scheduled tick through. These tests drive a
+// pending fetch across several intervals on the existing fake-timer harness and
+// count seeder.fetch invocations, which is the run count.
+describe('scheduler interval overlap guard', () => {
+  type Deferred<T> = {
+    promise: Promise<T>;
+    resolve: (value: T) => void;
+    reject: (reason?: unknown) => void;
+  };
+
+  function deferred<T>(): Deferred<T> {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  // A seeder whose fetch never settles on its own: every call returns a fresh
+  // pending promise, and the test decides when (and how) each one settles.
+  // Returning the SAME promise from every call would make one rejection look
+  // like many failures, which is not how a real seeder behaves.
+  function pendingFetch() {
+    const pending: Deferred<unknown>[] = [];
+    const fn = vi.fn(() => {
+      const d = deferred<unknown>();
+      pending.push(d);
+      return d.promise;
+    });
+    return {
+      fn,
+      /** Settle the oldest still-pending call successfully. */
+      resolveOldest: (value: unknown) => {
+        const d = pending.shift();
+        if (!d) throw new Error('no pending seeder fetch to resolve');
+        d.resolve(value);
+      },
+      /** Reject the oldest still-pending call. */
+      rejectOldest: (reason: unknown) => {
+        const d = pending.shift();
+        if (!d) throw new Error('no pending seeder fetch to reject');
+        d.reject(reason);
+      },
+    };
+  }
+
+  const fetchedAtOfLiveSnapshot = (callIndex: number): string => {
+    const payload = setLiveSnapshotMock.mock.calls[callIndex]?.[1] as { fetchedAt: string } | undefined;
+    if (!payload) throw new Error(`No setLiveSnapshot call at index ${callIndex}`);
+    return payload.fetchedAt;
+  };
+
+  it('F1: a run pending across several intervals yields at most one run (old code starts one per tick)', async () => {
+    const fetchMock = vi.fn().mockReturnValue(new Promise(() => {}));
+    registerSeeders([freshSeeder('seed-overlap', fetchMock)]);
+    startScheduler();
+
+    // Kickstart fires, then four interval ticks fire while it is still pending.
+    await vi.advanceTimersByTimeAsync(4000);
+
+    // Old code: 1 kickstart + 4 overlapping ticks = 5 concurrent runs.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('F2: resolving the pending run lets the next scheduled tick run again, once per tick, in order', async () => {
+    const { fn, resolveOldest } = pendingFetch();
+    registerSeeders([freshSeeder('seed-resolve', fn)]);
+    startScheduler();
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    // Four interval ticks arrive while the kickstart is still in flight, and the
+    // guard drops every one of them: still exactly one run, and not a single
+    // snapshot written for a run that has not completed.
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(setLiveSnapshotMock).not.toHaveBeenCalled();
+
+    // The in-flight kickstart finally succeeds. The guard is released by the time
+    // the next scheduled tick arrives, so it runs: one run per interval tick from
+    // here, with no catch-up burst for the four intervals already skipped.
+    resolveOldest([{ id: 1 }]);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fn).toHaveBeenCalledTimes(2);
+
+    // One write and one ok broadcast per completed run, never two for one run.
+    expect(setLiveSnapshotMock).toHaveBeenCalledTimes(1);
+    const okFrames = broadcastSeederStatusMock.mock.calls.filter(c => (c[1] as { status?: string }).status === 'ok');
+    expect(okFrames).toHaveLength(1);
+
+    // The completed run's snapshot carries the stamp taken when it finished, so a
+    // serialized seeder can never land a snapshot under another run's stamp.
+    expect(new Date(fetchedAtOfLiveSnapshot(0)).getTime()).toBeLessThanOrEqual(
+      new Date(seederMeta['seed-resolve'].lastRun ?? 0).getTime() + 1,
+    );
+  });
+
+  it('F3: a rejected pending run clears the guard so the next tick recovers (finally on the failure path)', async () => {
+    const { fn, rejectOldest, resolveOldest } = pendingFetch();
+    registerSeeders([freshSeeder('seed-reject-recover', fn)]);
+    startScheduler();
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    // Reject the in-flight run; the next scheduled tick must be allowed through.
+    rejectOldest(new Error('upstream timeout'));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(seederMeta['seed-reject-recover'].failureCount).toBe(1);
+    expect(seederMeta['seed-reject-recover'].lastError).toBe('upstream timeout');
+
+    resolveOldest([{ id: 'recovered' }]);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fn).toHaveBeenCalledTimes(3);
+
+    // The recovery run records a clean success.
+    expect(seederMeta['seed-reject-recover'].itemsSeen).toBe(1);
+    expect(seederMeta['seed-reject-recover'].lastError).toBeNull();
+    expect(setLiveSnapshotMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('F4: a slow seeder never blocks another seeder; guards are per-seeder', async () => {
+    const fastFetch = vi.fn().mockResolvedValue([{ id: 'fast' }]);
+    const { fn, resolveOldest } = pendingFetch();
+    registerSeeders([freshSeeder('seed-slow', fn), freshSeeder('seed-fast', fastFetch)]);
+    startScheduler();
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(fastFetch).toHaveBeenCalledTimes(3);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    resolveOldest([{ id: 'slow-1' }]);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fn).toHaveBeenCalledTimes(2);
+    expect(fastFetch).toHaveBeenCalledTimes(4);
+    expect(seederMeta['seed-fast'].failureCount).toBe(0);
+  });
+
+  it('F5: skipped ticks are dropped, not queued - runs are exactly one per interval that finds no run in flight', async () => {
+    const { fn, resolveOldest } = pendingFetch();
+    registerSeeders([freshSeeder('seed-noqueue', fn)]);
+    startScheduler();
+
+    // Five interval ticks fire while the kickstart is still in flight: one run.
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(setLiveSnapshotMock).not.toHaveBeenCalled();
+
+    resolveOldest([{ id: 1 }]);
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fn).toHaveBeenCalledTimes(2);
+    expect(setLiveSnapshotMock).toHaveBeenCalledTimes(1);
+
+    resolveOldest([{ id: 2 }]);
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fn).toHaveBeenCalledTimes(3);
+
+    // Seven ticks fired, three runs happened: no catch-up burst for the
+    // intervals the guard deliberately skipped while a run was in flight.
+    expect(setLiveSnapshotMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('F6: guard release when the stop path rejects keeps later ticks alive and records exactly one failure', async () => {
+    const { fn, rejectOldest, resolveOldest } = pendingFetch();
+    registerSeeders([freshSeeder('seed-stop-release', fn)]);
+    startScheduler();
+
+    // Drain the pending kickstart to a rejection so the next tick must run.
+    await vi.advanceTimersByTimeAsync(1000);
+    rejectOldest(new Error('seeder stopped mid-run'));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(seederMeta['seed-stop-release'].failureCount).toBe(1);
+
+    resolveOldest([{ id: 'after-stop' }]);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fn).toHaveBeenCalledTimes(3);
+    expect(seederMeta['seed-stop-release'].itemsSeen).toBe(1);
+  });
+
+  it('F7: a still-pending kickstart emits no status frame until it settles, and a rejection still reaches the stale path', async () => {
+    const { fn, rejectOldest } = pendingFetch();
+    registerSeeders([freshSeeder('seed-envelope', fn)]);
+    startScheduler();
+
+    // A run still in flight emits nothing at all: no frame while it is pending,
+    // and no second run to emit one either.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(broadcastSeederStatusMock).not.toHaveBeenCalled();
+
+    rejectOldest(new Error('first run died'));
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(1);
+    expect(broadcastSeederStatusMock).toHaveBeenCalledWith('seed-envelope', expect.objectContaining({
+      status: 'stale',
+      lastGood: null,
+    }));
+    expect(seederMeta['seed-envelope'].failureCount).toBe(1);
+  });
+});
