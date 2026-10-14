@@ -39,36 +39,69 @@ const lastSnapshotTimes = new Map<string, number>();
 const SNAPSHOT_THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
+ * Stable, bounded, public-safe marker used when a live snapshot cannot be
+ * published. Callers record the message as their lastError; the raw transport
+ * error stays attached internally as the error's `cause` and is never exposed
+ * through scheduler state or the health payload.
+ */
+export const SNAPSHOT_WRITE_FAILED = 'snapshot-write-failed';
+
+/**
  * Convenience method to write a JSON payload to Redis with an expiration.
  * Writes are throttled to save Redis requests, but websockets are always broadcasted.
+ *
+ * Resolves for an intentional throttle skip and for a completed write. Rejects
+ * with SNAPSHOT_WRITE_FAILED when the broadcast, serialization, compression, or
+ * either Redis write actually fails, so callers never record a failed
+ * publication as a success.
  */
-export async function setLiveSnapshot(source: string, payload: unknown, ttlSeconds: number) {
+export async function setLiveSnapshot(source: string, payload: unknown, ttlSeconds: number): Promise<void> {
+  const now = Date.now();
+  const previousReservation = lastSnapshotTimes.get(source);
+  const admitted = now - (previousReservation ?? 0) >= SNAPSHOT_THROTTLE_MS;
+
+  // Reserve the throttle window synchronously, before any await, so a duplicate
+  // call arriving while this write is pending is still suppressed. A failed
+  // attempt releases only its own reservation in the catch below.
+  if (admitted) {
+    lastSnapshotTimes.set(source, now);
+  }
+
   try {
     // 1. ALWAYS broadcast newly updated entities to any active WebSocket subscribers
     // The data pipeline relies on this for high-frequency HUD updates.
     broadcastPluginData(source, payload);
 
     // 2. Throttle Redis snapshots to prevent blowing past 500K max request limits (e.g. Upstash)
-    const now = Date.now();
-    const lastTime = lastSnapshotTimes.get(source) || 0;
-    if (now - lastTime < SNAPSHOT_THROTTLE_MS) {
-      return; // Skip Redis write
+    if (!admitted) {
+      return; // Intentional throttle skip: a normal broadcast with no Redis write.
     }
-    lastSnapshotTimes.set(source, now);
 
     const key = `data:${source}:live`;
     const jsonStr = JSON.stringify(payload);
-    
+
     // Compress JSON strings to drastically reduce Upstash payload size
     const compressed = zlib.gzipSync(Buffer.from(jsonStr, 'utf-8'));
     await redis.set(key, compressed, 'EX', ttlSeconds);
-    
+
     // Also save a metadata key so healthcheck can verify
     await redis.set(`meta:${source}:last_run`, Date.now().toString(), 'EX', ttlSeconds * 2);
 
     console.log(`[Redis] Snapshot saved to Redis for ${source} (${(compressed.length / 1024).toFixed(2)} KB)`);
   } catch (error) {
+    // Release ONLY this attempt's own reservation, so the next call retries
+    // instead of waiting out a 5-minute window for a write that never landed.
+    // The prior reservation (last successful write) is restored; if another
+    // admitted write already replaced it, the newer reservation is left alone.
+    if (admitted && lastSnapshotTimes.get(source) === now) {
+      if (previousReservation === undefined) {
+        lastSnapshotTimes.delete(source);
+      } else {
+        lastSnapshotTimes.set(source, previousReservation);
+      }
+    }
     console.error(`[Redis] Failed to snapshot ${source}:`, error);
+    throw new Error(SNAPSHOT_WRITE_FAILED, { cause: error });
   }
 }
 

@@ -20,6 +20,34 @@ vi.mock('./redis', () => ({
   setLiveSnapshot: setLiveSnapshotMock,
 }));
 
+// Transport mocks for the integration block at the bottom of this file, which
+// loads the REAL redis module through vi.importActual. dotenv is stubbed so no
+// environment file is opened, and REDIS_URL is pinned to a credential-free
+// synthetic fixture before that import so no inherited connection string is
+// read or logged.
+const { redisSetMock, redisOnMock } = vi.hoisted(() => {
+  process.env.REDIS_URL = 'redis://127.0.0.1:6399/0';
+  return { redisSetMock: vi.fn(), redisOnMock: vi.fn() };
+});
+
+vi.mock('dotenv', () => ({ default: { config: vi.fn() } }));
+
+vi.mock('ioredis', () => {
+  class MockRedis {
+    on(...args: unknown[]) {
+      redisOnMock(...args);
+      return this;
+    }
+    set(...args: unknown[]) {
+      return redisSetMock(...args);
+    }
+    getBuffer() {
+      return Promise.resolve(null);
+    }
+  }
+  return { default: MockRedis, Redis: MockRedis };
+});
+
 import { registerSeeders, seederMeta, seederStatus, startScheduler } from './scheduler';
 
 type FetchMock = (ctx: SeederContext) => Promise<unknown>;
@@ -244,3 +272,96 @@ describe('scheduler stale/error envelope', () => {
     expect(seederMeta['seed-falsy'].lastError).toBe('Seeder returned no data');
   });
 });
+
+// Integration coverage for the production propagation path: the scheduler runs
+// against the REAL setLiveSnapshot (the './redis' module mock above delegates to
+// the actual implementation) while only the Redis transport (ioredis) and the
+// websocket fan-out are stubbed. This proves a rejected publication reaches
+// recordSeederFailure instead of being swallowed.
+describe('scheduler integration through the real setLiveSnapshot', () => {
+  const THROTTLE_MS = 5 * 60 * 1000;
+  // One tick per throttle window: every run is admitted, so a failed write can
+  // be told apart from an intentional throttle skip.
+  const WINDOW_INTERVAL_MS = THROTTLE_MS;
+
+  let realSetLiveSnapshot: typeof import('./redis').setLiveSnapshot;
+  let snapshotWriteFailed: string;
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import('./redis')>('./redis');
+    realSetLiveSnapshot = actual.setLiveSnapshot;
+    snapshotWriteFailed = actual.SNAPSHOT_WRITE_FAILED;
+    setLiveSnapshotMock.mockReset();
+    setLiveSnapshotMock.mockImplementation(realSetLiveSnapshot);
+    redisSetMock.mockReset().mockResolvedValue('OK');
+    broadcastPluginDataMock.mockClear();
+  });
+
+  it('records a failure, not a success, when the real publication rejects, then recovers', async () => {
+    const rawError = new Error('redis write failed for redis-host.internal:6379');
+    redisSetMock
+      .mockResolvedValueOnce('OK')
+      .mockResolvedValueOnce('OK')
+      .mockRejectedValueOnce(rawError)
+      .mockResolvedValueOnce('OK')
+      .mockResolvedValueOnce('OK');
+
+    const fetchMock: FetchMock = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockResolvedValueOnce([{ id: 2 }])
+      .mockResolvedValueOnce([{ id: 3 }]);
+
+    registerSeeders([{ id: 'seed-real-pub', name: 'seed-real-pub', interval: WINDOW_INTERVAL_MS, fetch: fetchMock }]);
+    startScheduler();
+
+    // Run 1 (ok frame) then run 2, whose real data write rejects.
+    await runIntervals(2, WINDOW_INTERVAL_MS);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(redisSetMock).toHaveBeenCalledTimes(3);
+    expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(2);
+    const staleFrame = broadcastSeederStatusMock.mock.calls[1][1] as { status: string; lastGood: string | null };
+    expect(staleFrame.status).toBe('stale');
+    // The timestamp from the last successful run is preserved as lastGood.
+    expect(staleFrame.lastGood).toBe(fetchedAtOfSuccessCall(0));
+
+    const failedMeta = seederMeta['seed-real-pub'];
+    expect(failedMeta.failureCount).toBe(1);
+    expect(failedMeta.lastError).toBe(snapshotWriteFailed);
+    expect(failedMeta.lastError).not.toContain('redis-host.internal');
+    // Attempt timestamp is still recorded on the failure path (unchanged).
+    expect(failedMeta.lastRun).toBeTypeOf('number');
+
+    // A later run recovers: the success reset clears the error and records items.
+    await vi.advanceTimersByTimeAsync(WINDOW_INTERVAL_MS);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(redisSetMock).toHaveBeenCalledTimes(5);
+    expect(broadcastSeederStatusMock).toHaveBeenCalledTimes(3);
+    expect((broadcastSeederStatusMock.mock.calls[2][1] as { status: string }).status).toBe('ok');
+    const recoveredMeta = seederMeta['seed-real-pub'];
+    expect(recoveredMeta.lastError).toBeNull();
+    expect(recoveredMeta.failureCount).toBe(1);
+    expect(recoveredMeta.itemsSeen).toBe(1);
+  });
+
+  it('treats an intentional throttle skip as a normal resolve, never a failure', async () => {
+    const fetchMock: FetchMock = vi.fn().mockResolvedValue([{ id: 'throttled' }]);
+    registerSeeders([freshSeeder('seed-real-throttle', fetchMock)]);
+    startScheduler();
+
+    await runIntervals(2);
+
+    // Run 1 wrote data+meta; run 2 was throttle-skipped, so no extra Redis write.
+    expect(redisSetMock).toHaveBeenCalledTimes(2);
+    // Every run still broadcast to websocket subscribers.
+    expect(broadcastPluginDataMock).toHaveBeenCalledTimes(2);
+    expect(seederMeta['seed-real-throttle'].failureCount).toBe(0);
+    expect(seederMeta['seed-real-throttle'].lastError).toBeNull();
+    expect(
+      broadcastSeederStatusMock.mock.calls.every(call => (call[1] as { status: string }).status === 'ok'),
+    ).toBe(true);
+  });
+});
+
