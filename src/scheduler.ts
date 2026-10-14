@@ -27,6 +27,15 @@ export function getRegisteredSeederNames(): string[] {
 // Registry to track the last run time of each seeder
 export const seederStatus: Record<string, number | null> = {};
 
+// Per-seeder in-flight marker for interval runs. A seeder whose fetch outlives
+// its own cadence must not stack overlapping runs: a tick that fires while the
+// seeder's previous run is still in flight is skipped, not queued, so a slow
+// upstream can never accumulate an unbounded backlog of runs. The marker is
+// keyed by seeder id, so one slow seeder never blocks another, and it is always
+// released in the runner's finally block so the next scheduled tick runs
+// normally after either a success or a failure.
+const inFlightIntervalRuns = new Set<string>();
+
 // Per-seeder in-memory metric state, exposed to /health by a later change.
 export type SeederMeta = {
   lastRun: number | null;
@@ -167,6 +176,11 @@ export function startScheduler() {
       console.log(`[Scheduler] Scheduling interval seeder: ${seeder.id} (${seeder.interval}ms)`);
       
       const runSeeder = async () => {
+        if (inFlightIntervalRuns.has(seeder.id)) {
+          console.log(`[Scheduler] Skipping tick for ${seeder.id}: previous run still in flight`);
+          return;
+        }
+        inFlightIntervalRuns.add(seeder.id);
         try {
           console.log(`[Scheduler] Running seeder: ${seeder.id} ...`);
           const data = await seeder.fetch!({ redis });
@@ -191,6 +205,10 @@ export function startScheduler() {
         } catch (error: unknown) {
           console.error(`[Scheduler] Seeder ${seeder.id} failed:`, error instanceof Error ? error.message : String(error));
           recordSeederFailure(seeder.id, error);
+        } finally {
+          // Released on every exit path so a failing or hanging run can never
+          // wedge the seeder's schedule permanently.
+          inFlightIntervalRuns.delete(seeder.id);
         }
       };
       
