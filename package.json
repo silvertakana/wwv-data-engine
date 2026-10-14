@@ -62,9 +62,11 @@
       "brace-expansion": "^5.0.9",
       "fast-uri": "^3.1.5",
       "find-my-way": "^9.7.0",
-      "ip-address": "^10.3.1",
+      "ip-address": "^10.7.4",
       "nanoid@<4": "3.3.18",
       "postcss": "^8.5.18",
+      "qs@<6.16.0": "^6.16.1",
+      "source-map-js@<1.2.2": "^1.2.2",
       "undici@<8": "^7.29.0"
     }
   }
