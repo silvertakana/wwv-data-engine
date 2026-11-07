@@ -31,3 +31,8 @@ coverage/
 # Mutation testing (Stryker)
 .stryker-tmp/
 reports/
+
+# internal agentic + planning material - kept in a private workspace repository,
+# never published from here. One directory rule, no re-includes.
+/.agents/
+.planning/
